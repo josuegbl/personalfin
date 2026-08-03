@@ -1,0 +1,75 @@
+import { Routes, Route, NavLink } from "react-router-dom";
+import { LayoutDashboard, ArrowLeftRight, Tag, RefreshCw } from "lucide-react";
+import Dashboard from "./pages/Dashboard";
+import Transactions from "./pages/Transactions";
+import Categories from "./pages/Categories";
+import { api } from "./api/client";
+import { useState } from "react";
+
+export default function App() {
+  const [syncing, setSyncing] = useState(false);
+
+  async function handleSyncAll() {
+    setSyncing(true);
+    try {
+      await api.accounts.syncAll();
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex">
+      {/* Sidebar */}
+      <aside className="w-56 bg-gray-900 text-white flex flex-col">
+        <div className="p-5 border-b border-gray-700">
+          <h1 className="text-lg font-bold tracking-tight">💰 BankFinances</h1>
+          <p className="text-xs text-gray-400 mt-0.5">Economía familiar</p>
+        </div>
+
+        <nav className="flex-1 p-3 space-y-1">
+          <NavItem to="/" icon={<LayoutDashboard size={16} />} label="Dashboard" />
+          <NavItem to="/transactions" icon={<ArrowLeftRight size={16} />} label="Movimientos" />
+          <NavItem to="/categories" icon={<Tag size={16} />} label="Categorías" />
+        </nav>
+
+        <div className="p-3 border-t border-gray-700">
+          <button
+            onClick={handleSyncAll}
+            disabled={syncing}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Sincronizando…" : "Sincronizar todo"}
+          </button>
+        </div>
+      </aside>
+
+      {/* Main content */}
+      <main className="flex-1 overflow-auto">
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/transactions" element={<Transactions />} />
+          <Route path="/categories" element={<Categories />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
+  return (
+    <NavLink
+      to={to}
+      end
+      className={({ isActive }) =>
+        `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+          isActive ? "bg-blue-600 text-white" : "text-gray-300 hover:bg-gray-700 hover:text-white"
+        }`
+      }
+    >
+      {icon}
+      {label}
+    </NavLink>
+  );
+}
