@@ -1,9 +1,10 @@
 import type { Account, Transaction, Category, DashboardData } from "../types";
 
-const BASE = "/api/v1";
+const API_BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+const BASE = `${API_BASE_URL}/api/v1`;
 
 async function get<T>(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
-  const url = new URL(BASE + path, window.location.origin);
+  const url = new URL(BASE + path);
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined) url.searchParams.set(k, String(v));

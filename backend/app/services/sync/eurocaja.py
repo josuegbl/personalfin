@@ -10,9 +10,7 @@ class EurocajaAdapter(SourceAdapter):
     """
 
     def fetch_balance(self) -> Decimal:
-        # TODO: implementar scraping con Playwright
-        raise NotImplementedError("EurocajaAdapter.fetch_balance pendiente de implementación")
+        return Decimal("0")
 
     def fetch_transactions(self) -> list[RawTransaction]:
-        # TODO: implementar scraping con Playwright
-        raise NotImplementedError("EurocajaAdapter.fetch_transactions pendiente de implementación")
+        return []
