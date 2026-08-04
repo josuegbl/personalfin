@@ -11,8 +11,12 @@ class Settings(BaseSettings):
     PAYPAL_CLIENT_SECRET: str = ""
     PAYPAL_MODE: str = "sandbox"
 
-    BBVA_USER: str = ""
-    BBVA_PASSWORD: str = ""
+    # BBVA Josué (propietario="Josué")
+    BBVA_JGB_USER: str = ""
+    BBVA_JGB_PASSWORD: str = ""
+    # BBVA Adi (propietario="Adi")
+    BBVA_ADI_USER: str = ""
+    BBVA_ADI_PASSWORD: str = ""
 
     EUROCAJA_USER: str = ""
     EUROCAJA_PASSWORD: str = ""

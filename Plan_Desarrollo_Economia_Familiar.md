@@ -89,6 +89,44 @@ SourceAdapter
 └── PayPalAdapter (REST API)
 ```
 
+### Transferencias internas: deduplicación entre cuentas
+
+Cuando se transfiere dinero entre cuentas propias (BBVA Josué, BBVA Adi,
+Caja Rural) el movimiento aparece **en ambos lados**: como un débito en la
+cuenta origen y como un crédito en la cuenta destino. Contarlos como gasto e
+ingreso distorsionaría el análisis.
+
+Algoritmo de detección:
+
+1.  Tras cada sincronización, buscar transacciones sin emparejar cuyo
+    concepto contenga el IBAN o alias de otra cuenta propia.
+2.  Como segundo criterio, buscar pares `(débito, crédito)` con el mismo
+    importe absoluto y fecha dentro de una ventana de 2 días hábiles.
+3.  Si ambas cuentas pertenecen a la tabla `accounts` → marcar el par como
+    transferencia interna.
+4.  Ambas patas reciben `categoria = 'Transferencias internas'` y
+    `excluir_de_gastos = true`.
+5.  Quedan enlazadas mediante el campo `transfer_pair_id`.
+
+Casos conocidos en este hogar:
+
+| Origen | Destino | Concepto habitual |
+|---|---|---|
+| Caja Rural | BBVA Josué | Transferencia mensual salario |
+| Caja Rural | BBVA Adi | Transferencia mensual salario |
+| BBVA Adi | Caja Rural | Aportación gastos comunes |
+| Cualquier cuenta | ING Ahorro | Transferencia a ahorro |
+
+Si solo se detecta una de las dos patas (por ejemplo, el banco destino
+no está sincronizado aún), la transacción se marca con
+`transfer_estado = 'pendiente'` en lugar de excluirse, para revisión manual.
+
+```sql
+-- Campos adicionales en transactions
+transfer_pair_id   INTEGER REFERENCES transactions(id),
+transfer_estado    TEXT CHECK (transfer_estado IN ('completo', 'pendiente', NULL))
+```
+
 ### PayPal: deduplicación de movimientos
 
 Cuando se paga con PayPal usando la cuenta bancaria como fuente de
@@ -130,7 +168,9 @@ y como un gasto en PayPal. Para no contarlo dos veces:
 -   recurrente
 -   origen (`bank` | `paypal`)
 -   paypal_transaction_id (nullable; enlaza el cargo bancario con su pago PayPal)
--   excluir_de_gastos (boolean; `true` para movimientos `paypal_passthrough`)
+-   transfer_pair_id (nullable; enlaza las dos patas de una transferencia interna)
+-   transfer_estado (`completo` | `pendiente` | null)
+-   excluir_de_gastos (boolean; `true` para `paypal_passthrough` y transferencias internas completas)
 -   hash
 
 ### categories
@@ -250,7 +290,128 @@ Con previsión del saldo tras cada cargo.
 
 ------------------------------------------------------------------------
 
-## 8. Buscador
+## 8. Forecast del mes siguiente
+
+### Objetivo
+
+Mostrar una previsión cerrada del mes siguiente antes de que empiece, respondiendo a:
+
+-   ¿Cuánto vamos a ingresar?
+-   ¿Qué gastos fijos tenemos ya confirmados?
+-   ¿Qué gastos extraordinarios caen este mes?
+-   ¿Cuánto nos quedará disponible para gastos variables y ahorro?
+
+### Fuentes de datos
+
+| Dato | Origen |
+|---|---|
+| Nóminas | Transacciones categorizadas como `Nómina` en los últimos 3 meses |
+| Gastos recurrentes | Motor de recurrentes (módulo 4) |
+| Gastos estacionales | Tabla `recurring_expenses` con flag `mes_activacion` |
+| Saldo inicial | Suma de saldos actuales en todas las cuentas |
+
+### Modelo de datos
+
+```sql
+-- Gastos recurrentes con mes de activación
+CREATE TABLE recurring_expenses (
+    id            SERIAL PRIMARY KEY,
+    concepto      TEXT NOT NULL,
+    importe       DECIMAL(10,2) NOT NULL,
+    cuenta_id     INTEGER REFERENCES accounts(id),
+    tipo          TEXT CHECK (tipo IN ('fijo', 'estacional', 'variable')),
+    meses         INTEGER[],        -- meses en que aplica (1-12); NULL = todos
+    dia_cobro     INTEGER,          -- día del mes estimado
+    categoria     TEXT
+);
+```
+
+### Cálculo del forecast
+
+```
+Ingresos previstos
+  = suma de nóminas (media 3 meses)
+  + ingresos extra confirmados
+
+Gastos fijos previstos
+  = gastos recurrentes activos en el mes siguiente
+  + gastos estacionales que caen ese mes
+
+Gastos variables estimados
+  = media de gastos variables de los últimos 3 meses
+
+Saldo previsto final
+  = saldo actual
+  + ingresos previstos
+  - gastos fijos previstos
+  - gastos variables estimados
+
+Margen de ahorro
+  = saldo previsto final - colchón mínimo configurado
+```
+
+### Pantalla de forecast
+
+Estructura del panel:
+
+```
+┌─────────────────────────────────────────────────┐
+│  PREVISIÓN SEPTIEMBRE 2026                       │
+├──────────────────┬──────────────────────────────┤
+│ Ingresos         │ Josué            1.953,79 €  │
+│                  │ Adi              2.977,55 €  │
+│                  │ ─────────────────────────── │
+│                  │ Total            4.931,34 €  │
+├──────────────────┼──────────────────────────────┤
+│ Gastos fijos     │ Hipoteca           550,93 €  │
+│                  │ Préstamos          948,52 €  │
+│                  │ Suministros        309,00 €  │
+│                  │ Suscripciones      102,74 €  │
+│                  │ Salud               59,90 €  │
+│                  │ Otros               480,44 € │
+│                  │ ─────────────────────────── │
+│                  │ Total            2.451,53 €  │
+├──────────────────┼──────────────────────────────┤
+│ ⚠ Extraordinario │ Seguro Toyota      471,64 €  │
+│                  │ Amazon Prime        49,99 €  │
+│                  │ ─────────────────────────── │
+│                  │ Total              521,63 €  │
+├──────────────────┼──────────────────────────────┤
+│ Variables (est.) │ Media 3 meses    ~800,00 €   │
+├──────────────────┼──────────────────────────────┤
+│ DISPONIBLE       │                 1.158,18 €   │
+└──────────────────┴──────────────────────────────┘
+```
+
+Reglas de presentación:
+
+-   Los gastos extraordinarios (solo algunos meses del año) se destacan
+    visualmente con un icono de advertencia y color diferenciado.
+-   Si el disponible estimado cae por debajo del colchón mínimo configurado,
+    se muestra alerta en rojo.
+-   El desglose por cuenta (BBVA Josué, BBVA Adi, Caja Rural) es accesible
+    desde el panel expandido.
+
+### Gastos estacionales conocidos
+
+Cargados como datos semilla en la base de datos:
+
+| Concepto | Importe | Meses |
+|---|---|---|
+| Seguro Toyota | 471,64 € | Septiembre |
+| Seguro Kia | 121,82 € | Febrero, Abril |
+| Seguro Hogar | 98,12 € | Febrero, Mayo, Agosto, Noviembre |
+| Seguro Vida | 121,91 € | Febrero, Mayo, Agosto, Noviembre |
+| Amazon Prime | 49,99 € | Septiembre |
+| Microsoft 365 | 129,99 € | Agosto |
+| Mantenimiento caldera | 155,05 € | Mayo |
+| Comisión tarjeta | 80,00 € | Julio |
+| Comedor colegio (inicio curso) | 242,00 € | Octubre |
+| Remesas | 100–200 € | Según mes |
+
+------------------------------------------------------------------------
+
+## 9. Buscador
 
 Búsquedas como:
 
@@ -261,7 +422,7 @@ Búsquedas como:
 
 ------------------------------------------------------------------------
 
-## 9. IA (segunda fase)
+## 10. IA (segunda fase)
 
 La IA no accederá directamente a los movimientos bancarios.
 
@@ -332,10 +493,15 @@ Frontend
 
 ## Versión 2
 
+-   Forecast del mes siguiente
+-   Gastos estacionales (datos semilla)
+-   Alertas de disponible bajo
+
+## Versión 3
+
 -   IA
 -   Recomendaciones
 -   Presupuestos
--   Alertas
 
 ------------------------------------------------------------------------
 

@@ -25,6 +25,7 @@ app.include_router(router)
 def startup():
     Base.metadata.create_all(bind=engine)
     _seed_categories()
+    _seed_recurring_expenses()
 
 
 def _seed_categories():
@@ -99,6 +100,22 @@ def _seed_categories():
             )
             db.add(rule)
 
+        db.commit()
+    finally:
+        db.close()
+
+
+def _seed_recurring_expenses():
+    from app.core.database import SessionLocal
+    from app.models.recurring_expense import RecurringExpense
+    from app.seed import RECURRING_EXPENSES
+
+    db = SessionLocal()
+    try:
+        if db.query(RecurringExpense).count() > 0:
+            return
+        for data in RECURRING_EXPENSES:
+            db.add(RecurringExpense(**data))
         db.commit()
     finally:
         db.close()
