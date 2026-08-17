@@ -94,34 +94,50 @@ class PayPalAdapter(SourceAdapter):
 
     def sync(self):
         imported = super().sync()
-        self._mark_bank_passthroughs()
+        mark_bank_passthroughs(self.db)
         return imported
 
-    def _mark_bank_passthroughs(self):
-        """
-        Marca como excluir_de_gastos las transacciones bancarias cuyo concepto
-        contenga "PAYPAL", ya que ese gasto se registra en PayPal.
-        """
-        from app.models.transaction import Transaction
-        from sqlalchemy import or_
 
-        bank_paypal = (
-            self.db.query(Transaction)
-            .filter(
-                Transaction.account_id != self.account.id,
-                Transaction.origen == TransactionOrigin.bank,
-                Transaction.excluir_de_gastos == False,
-                or_(*[
-                    Transaction.concepto_original.ilike(f"%{kw}%")
-                    for kw in _PASSTHROUGH_KEYWORDS
-                ]),
-            )
-            .all()
-        )
-        for t in bank_paypal:
-            t.excluir_de_gastos = True
-        if bank_paypal:
-            self.db.commit()
+# ------------------------------------------------------------------
+# Función pública reutilizable: marcar passthroughs de PayPal en cuentas bancarias
+# ------------------------------------------------------------------
+
+def mark_bank_passthroughs(db) -> int:
+    """
+    Busca en todas las cuentas bancarias (no-PayPal) transacciones cuyo concepto
+    contenga palabras clave de PayPal y las marca como excluir_de_gastos=True.
+
+    Se llama tanto después del sync automático de PayPal como después de importar
+    un extracto bancario CSV, para que los cargos "RECIBO PayPal Europe S.a.r.l."
+    queden excluidos del cómputo de gastos (el gasto real consta en PayPal).
+
+    Devuelve el número de transacciones marcadas en esta llamada.
+    """
+    from app.models.transaction import Transaction
+    from app.models.account import Account
+    from sqlalchemy import or_
+
+    paypal_ids = [
+        a.id for a in db.query(Account).filter(Account.proveedor == "PayPal").all()
+    ]
+
+    q = db.query(Transaction).filter(
+        Transaction.origen == TransactionOrigin.bank,
+        Transaction.excluir_de_gastos == False,
+        or_(*[
+            Transaction.concepto_original.ilike(f"%{kw}%")
+            for kw in _PASSTHROUGH_KEYWORDS
+        ]),
+    )
+    if paypal_ids:
+        q = q.filter(Transaction.account_id.notin_(paypal_ids))
+
+    found = q.all()
+    for t in found:
+        t.excluir_de_gastos = True
+    if found:
+        db.commit()
+    return len(found)
 
 
 # ------------------------------------------------------------------

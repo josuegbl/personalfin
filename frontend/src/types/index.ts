@@ -73,3 +73,47 @@ export interface DashboardData {
   gastos_por_categoria: CategoryExpense[];
   evolucion_mensual: MonthlySummary[];
 }
+
+export interface UploadResult {
+  imported: number;
+  total_in_file: number;
+  skipped_duplicates: number;
+  balance: number;
+  paypal_passthroughs_marked: number;
+}
+
+export interface ForecastCategoryItem {
+  nombre: string;
+  importe_planificado: number;
+  importe_real: number;
+}
+
+export interface ForecastCategoryInput {
+  nombre: string;
+  importe_planificado: number;
+}
+
+export interface ForecastPlanUpdate {
+  ingresos_josue: number;
+  ingresos_adi: number;
+  ingresos_extra: number;
+  categorias: ForecastCategoryInput[];
+}
+
+export interface ForecastData {
+  anio: number;
+  mes: number;
+  ingresos_josue: number;
+  ingresos_adi: number;
+  ingresos_extra: number;
+  gastos_fijos: ForecastCategoryItem[];
+  gastos_variables: ForecastCategoryItem[];
+  gastos_reales_por_categoria: ForecastCategoryItem[];
+  total_ingresos_plan: number;
+  total_gastos_fijos_plan: number;
+  total_gastos_variables_plan: number;
+  ahorro_estimado: number;
+  ingresos_reales: number;
+  total_gastos_reales: number;
+  ahorro_real: number;
+}

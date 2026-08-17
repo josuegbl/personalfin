@@ -1,8 +1,9 @@
 import { Routes, Route, NavLink } from "react-router-dom";
-import { LayoutDashboard, ArrowLeftRight, Tag, RefreshCw } from "lucide-react";
+import { LayoutDashboard, ArrowLeftRight, Tag, RefreshCw, TrendingUp } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import Categories from "./pages/Categories";
+import Forecast from "./pages/Forecast";
 import { api } from "./api/client";
 import { useState } from "react";
 
@@ -31,6 +32,7 @@ export default function App() {
           <NavItem to="/" icon={<LayoutDashboard size={16} />} label="Dashboard" />
           <NavItem to="/transactions" icon={<ArrowLeftRight size={16} />} label="Movimientos" />
           <NavItem to="/categories" icon={<Tag size={16} />} label="Categorías" />
+          <NavItem to="/forecast" icon={<TrendingUp size={16} />} label="Previsión" />
         </nav>
 
         <div className="p-3 border-t border-gray-700">
@@ -51,6 +53,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/categories" element={<Categories />} />
+          <Route path="/forecast" element={<Forecast />} />
         </Routes>
       </main>
     </div>

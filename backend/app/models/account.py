@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import String, Enum, Numeric, Boolean, DateTime, func
+from sqlalchemy import String, Enum, Numeric, Boolean, DateTime, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
@@ -24,6 +24,7 @@ class Account(Base):
     propietario: Mapped[str | None] = mapped_column(String(100), nullable=True)  # "Josué", "Mujer", None para PayPal/compartida
     activa: Mapped[bool] = mapped_column(Boolean, default=True)
     ultima_sync: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="account")

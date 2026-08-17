@@ -36,7 +36,9 @@ class SourceAdapter(ABC):
     def sync(self) -> int:
         transactions = self.fetch_transactions()
         balance = self.fetch_balance()
+        return self._persist(transactions, balance)
 
+    def _persist(self, transactions: list[RawTransaction], balance: Decimal) -> int:
         imported = 0
         for raw in transactions:
             h = self._hash(raw)
@@ -165,6 +167,25 @@ class SourceAdapter(ABC):
     def _hash(self, raw: RawTransaction) -> str:
         key = f"{self.account.id}|{raw.fecha}|{raw.importe}|{raw.concepto}"
         return hashlib.sha256(key.encode()).hexdigest()
+
+
+class CSVImportAdapter(SourceAdapter):
+    """
+    Adapter genérico para importar transacciones ya parseadas desde un CSV.
+    Úsalo cuando el CSV ya ha sido parseado externamente y solo necesitas
+    persistirlo con deduplicación y detección de transferencias internas.
+    """
+
+    def __init__(self, account, db, transactions: list[RawTransaction], balance: Decimal):
+        super().__init__(account, db)
+        self._transactions = transactions
+        self._balance = balance
+
+    def fetch_transactions(self) -> list[RawTransaction]:
+        return self._transactions
+
+    def fetch_balance(self) -> Decimal:
+        return self._balance
 
 
 # ------------------------------------------------------------------

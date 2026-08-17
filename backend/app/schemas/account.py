@@ -19,6 +19,7 @@ class AccountCreate(AccountBase):
 
 class AccountUpdate(BaseModel):
     alias: str | None = None
+    iban: str | None = None
     saldo_actual: Decimal | None = None
     activa: bool | None = None
     propietario: str | None = None
@@ -29,6 +30,7 @@ class AccountOut(AccountBase):
     saldo_actual: Decimal
     activa: bool
     ultima_sync: datetime | None
+    sync_error: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

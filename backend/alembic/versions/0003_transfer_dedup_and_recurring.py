@@ -15,6 +15,7 @@ depends_on = None
 
 
 def upgrade():
+    op.execute("CREATE TYPE transferestado AS ENUM ('completo', 'pendiente')")
     op.add_column(
         "transactions",
         sa.Column("transfer_pair_id", sa.Integer, sa.ForeignKey("transactions.id"), nullable=True),
@@ -23,7 +24,7 @@ def upgrade():
         "transactions",
         sa.Column(
             "transfer_estado",
-            sa.Enum("completo", "pendiente", name="transferestado"),
+            sa.Enum("completo", "pendiente", name="transferestado", create_type=False),
             nullable=True,
         ),
     )

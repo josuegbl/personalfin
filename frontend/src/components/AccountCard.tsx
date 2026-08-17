@@ -1,10 +1,11 @@
-import { Building2, Wallet, RefreshCw } from "lucide-react";
+import { Building2, Wallet, RefreshCw, Upload } from "lucide-react";
 import type { AccountBalance } from "../types";
 import { formatCurrency, formatDate } from "../utils/format";
 import { api } from "../api/client";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
+import UploadModal from "./UploadModal";
 
 const PROVIDER_STYLES: Record<string, { bg: string; border: string; badge: string; icon: string }> = {
   BBVA: {
@@ -38,6 +39,7 @@ export default function AccountCard({ data }: { data: AccountBalance }) {
   const { account, variacion_mes } = data;
   const style = PROVIDER_STYLES[account.proveedor] ?? DEFAULT_STYLE;
   const [syncing, setSyncing] = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
   const qc = useQueryClient();
 
   async function handleSync() {
@@ -56,6 +58,7 @@ export default function AccountCard({ data }: { data: AccountBalance }) {
   const isPayPal = account.tipo === "paypal";
 
   return (
+    <>
     <div className={clsx("rounded-2xl p-5 text-white shadow-lg border", style.bg, style.border)}>
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
@@ -75,14 +78,25 @@ export default function AccountCard({ data }: { data: AccountBalance }) {
             </div>
           </div>
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          title="Sincronizar cuenta"
-          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-40"
-        >
-          <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
-        </button>
+        <div className="flex items-center gap-1">
+          {account.proveedor !== "PayPal" && (
+            <button
+              onClick={() => setShowUpload(true)}
+              title="Importar extracto"
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+            >
+              <Upload size={13} />
+            </button>
+          )}
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            title="Sincronizar cuenta"
+            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-40"
+          >
+            <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
+          </button>
+        </div>
       </div>
 
       {/* Balance */}
@@ -115,5 +129,10 @@ export default function AccountCard({ data }: { data: AccountBalance }) {
         </div>
       )}
     </div>
+
+    {showUpload && (
+      <UploadModal account={account} onClose={() => setShowUpload(false)} />
+    )}
+    </>
   );
 }
