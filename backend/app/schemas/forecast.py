@@ -1,12 +1,22 @@
 from pydantic import BaseModel
 
 
+class FixedExpenseTier(BaseModel):
+    """Price tier data embedded in forecast response for editing."""
+
+    importe: float
+    meses: list[int] | None
+
+
 class ForecastCategoryItem(BaseModel):
     """A single line item with planned and real amounts."""
 
+    id: int | None = None  # Present only for gastos_fijos (RecurringExpense.id)
     nombre: str
     importe_planificado: float
     importe_real: float
+    meses: list[int] | None = None  # Present only for gastos_fijos; None = every month
+    tiers: list[FixedExpenseTier] = []
 
     model_config = {"from_attributes": True}
 

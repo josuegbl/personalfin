@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.models.category import Category
@@ -12,6 +12,7 @@ from app.models.forecast import ForecastCategoryBudget, ForecastPlan
 from app.models.recurring_expense import RecurringExpense
 from app.models.transaction import Transaction
 from app.schemas.forecast import (
+    FixedExpenseTier,
     ForecastCategoryItem,
     ForecastPlanUpdate,
     ForecastResponse,
@@ -20,14 +21,53 @@ from app.schemas.forecast import (
 router = APIRouter(prefix="/forecast", tags=["forecast"])
 
 
+def _tier_for_month(expense: RecurringExpense, month: int):
+    """Return the applicable tier for this month, or None if expense doesn't apply.
+
+    Checks tiers with specific months first, then falls back to the catch-all tier
+    (meses=None). Returns None when no tier matches.
+
+    Args:
+        expense: The recurring expense with its tiers loaded.
+        month: The target month (1–12).
+
+    Returns:
+        The matching RecurringExpenseTier, or None.
+    """
+    for tier in expense.tiers:
+        if tier.meses and month in tier.meses:
+            return tier
+    for tier in expense.tiers:
+        if tier.meses is None:
+            return tier
+    return None
+
+
 def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> ForecastResponse:
     """Assemble a ForecastResponse by combining plan data with live transaction data."""
-    all_recurring = db.query(RecurringExpense).all()
-    recurring = [r for r in all_recurring if r.meses is None or month in r.meses]
-    gastos_fijos = [
-        ForecastCategoryItem(nombre=r.concepto, importe_planificado=float(r.importe), importe_real=0.0)
-        for r in recurring
-    ]
+    all_recurring = (
+        db.query(RecurringExpense)
+        .options(selectinload(RecurringExpense.tiers))
+        .all()
+    )
+    gastos_fijos = []
+    for r in all_recurring:
+        tier = _tier_for_month(r, month)
+        if tier is None:
+            continue
+        gastos_fijos.append(
+            ForecastCategoryItem(
+                id=r.id,
+                nombre=r.concepto,
+                importe_planificado=float(tier.importe),
+                importe_real=0.0,
+                meses=tier.meses,
+                tiers=[
+                    FixedExpenseTier(importe=float(t.importe), meses=t.meses)
+                    for t in r.tiers
+                ],
+            )
+        )
 
     first_day = date(year, month, 1)
     last_day = date(year, month, monthrange(year, month)[1])

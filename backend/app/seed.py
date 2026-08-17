@@ -2,9 +2,11 @@
 Seed inicial: categorías y gastos estacionales conocidos.
 Uso: python -m app.seed
 """
+from decimal import Decimal
+
 from app.core.database import SessionLocal
 from app.models.category import Category
-from app.models.recurring_expense import RecurringExpense
+from app.models.recurring_expense import RecurringExpense, RecurringExpenseTier
 
 
 CATEGORIES = [
@@ -27,64 +29,205 @@ CATEGORIES = [
     {"nombre": "Otros",                  "icono": "📦", "color": "#9ca3af"},
 ]
 
-# Gastos estacionales extraídos del Excel "Pagos A cuenta"
-# meses: lista de meses del año en que aplica (1=enero, 12=diciembre)
+# Gastos fijos y estacionales. Cada entrada tiene una lista de tiers.
+# tiers: [{"importe": float, "meses": list[int] | None}]
+# meses None = todos los meses (catch-all).
 RECURRING_EXPENSES = [
-    # --- Fijos todos los meses ---
-    {"concepto": "Hipoteca Caja Rural",      "importe": 550.93, "tipo": "fijo",      "meses": None,                   "dia_cobro": 1,  "categoria": "Vivienda"},
-    {"concepto": "Préstamo BBVA JGB",        "importe": 30.30,  "tipo": "fijo",      "meses": None,                   "dia_cobro": 5,  "categoria": "Préstamos"},
-    {"concepto": "Kia Stonic",               "importe": 246.04, "tipo": "fijo",      "meses": None,                   "dia_cobro": 5,  "categoria": "Préstamos"},
-    {"concepto": "AA Cetelem",               "importe": 124.82, "tipo": "fijo",      "meses": None,                   "dia_cobro": 5,  "categoria": "Préstamos"},
-    {"concepto": "Préstamo COFIDIS",         "importe": 238.40, "tipo": "fijo",      "meses": None,                   "dia_cobro": 5,  "categoria": "Préstamos"},
-    {"concepto": "Préstamo CETELEM",         "importe": 308.96, "tipo": "fijo",      "meses": None,                   "dia_cobro": 5,  "categoria": "Préstamos"},
-    {"concepto": "Inglés Caja Rural",        "importe": 74.22,  "tipo": "fijo",      "meses": None,                   "dia_cobro": 1,  "categoria": "Educación"},
-    {"concepto": "Móvil + Internet",         "importe": 109.00, "tipo": "fijo",      "meses": None,                   "dia_cobro": 1,  "categoria": "Vivienda"},
-    {"concepto": "Comunidad",                "importe": 80.00,  "tipo": "fijo",      "meses": None,                   "dia_cobro": 1,  "categoria": "Vivienda"},
-    {"concepto": "Sanitas Dental",           "importe": 59.90,  "tipo": "fijo",      "meses": None,                   "dia_cobro": 1,  "categoria": "Salud"},
-    {"concepto": "Netflix",                  "importe": 14.99,  "tipo": "fijo",      "meses": None,                   "dia_cobro": 15, "categoria": "Suscripciones"},
-    {"concepto": "Disney+",                  "importe": 10.99,  "tipo": "fijo",      "meses": None,                   "dia_cobro": 15, "categoria": "Suscripciones"},
-    {"concepto": "Max",                      "importe": 7.99,   "tipo": "fijo",      "meses": None,                   "dia_cobro": 15, "categoria": "Suscripciones"},
-    {"concepto": "Spotify",                  "importe": 16.99,  "tipo": "fijo",      "meses": None,                   "dia_cobro": 15, "categoria": "Suscripciones"},
-    {"concepto": "HP Printer",               "importe": 1.79,   "tipo": "fijo",      "meses": None,                   "dia_cobro": 15, "categoria": "Suscripciones"},
-    {"concepto": "Paga Carlos",              "importe": 21.73,  "tipo": "fijo",      "meses": None,                   "dia_cobro": 1,  "categoria": "Otros"},
-    # --- Estacionales ---
-    {"concepto": "Luz (verano)",             "importe": 150.00, "tipo": "estacional", "meses": [7, 8, 9],             "dia_cobro": 15, "categoria": "Vivienda"},
-    {"concepto": "Luz (primavera/otoño)",    "importe": 120.00, "tipo": "estacional", "meses": [5, 6, 10, 11],        "dia_cobro": 15, "categoria": "Vivienda"},
-    {"concepto": "Luz (invierno)",           "importe": 100.00, "tipo": "estacional", "meses": [1, 2, 3, 4, 12],      "dia_cobro": 15, "categoria": "Vivienda"},
-    {"concepto": "Gas (bimestral)",          "importe": 90.00,  "tipo": "estacional", "meses": [6, 8, 10],            "dia_cobro": 15, "categoria": "Vivienda"},
-    {"concepto": "Gas (invierno)",           "importe": 130.00, "tipo": "estacional", "meses": [4, 12],               "dia_cobro": 15, "categoria": "Vivienda"},
-    {"concepto": "Gas (feb)",                "importe": 200.00, "tipo": "estacional", "meses": [2],                   "dia_cobro": 15, "categoria": "Vivienda"},
-    {"concepto": "Agua (bimestral)",         "importe": 50.00,  "tipo": "estacional", "meses": [1, 3, 5, 7, 9, 11],  "dia_cobro": 15, "categoria": "Vivienda"},
-    {"concepto": "Comedor colegio",          "importe": 121.00, "tipo": "estacional", "meses": [2, 3, 4, 5, 6],       "dia_cobro": 1,  "categoria": "Educación"},
-    {"concepto": "Comedor colegio (inicio)", "importe": 242.00, "tipo": "estacional", "meses": [10],                  "dia_cobro": 1,  "categoria": "Educación"},
-    {"concepto": "Seguro Toyota",            "importe": 471.64, "tipo": "estacional", "meses": [9],                   "dia_cobro": 1,  "categoria": "Seguros"},
-    {"concepto": "Seguro Kia",               "importe": 121.82, "tipo": "estacional", "meses": [2, 4],                "dia_cobro": 1,  "categoria": "Seguros"},
-    {"concepto": "Seguro Hogar",             "importe": 98.12,  "tipo": "estacional", "meses": [2, 5, 8, 11],         "dia_cobro": 1,  "categoria": "Seguros"},
-    {"concepto": "Seguro Vida",              "importe": 121.91, "tipo": "estacional", "meses": [2, 5, 8, 11],         "dia_cobro": 1,  "categoria": "Seguros"},
-    {"concepto": "Amazon Prime",             "importe": 49.99,  "tipo": "estacional", "meses": [9],                   "dia_cobro": 1,  "categoria": "Suscripciones"},
-    {"concepto": "Microsoft 365",            "importe": 129.99, "tipo": "estacional", "meses": [8],                   "dia_cobro": 1,  "categoria": "Suscripciones"},
-    {"concepto": "Mantenimiento caldera",    "importe": 155.05, "tipo": "estacional", "meses": [5],                   "dia_cobro": 1,  "categoria": "Vivienda"},
-    {"concepto": "Comisión tarjeta",         "importe": 80.00,  "tipo": "estacional", "meses": [7],                   "dia_cobro": 1,  "categoria": "Otros"},
-    {"concepto": "Remesas (meses impares)",  "importe": 100.00, "tipo": "estacional", "meses": [1, 3, 5, 7, 9, 11],  "dia_cobro": 15, "categoria": "Otros"},
-    {"concepto": "Remesas (meses pares)",    "importe": 200.00, "tipo": "estacional", "meses": [4, 6, 8, 10, 12],    "dia_cobro": 15, "categoria": "Otros"},
-    {"concepto": "Remesas (febrero)",        "importe": 300.00, "tipo": "estacional", "meses": [2],                   "dia_cobro": 15, "categoria": "Otros"},
+    # --- Fijos todos los meses (single tier, meses=None) ---
+    {
+        "concepto": "Hipoteca Caja Rural",
+        "tipo": "fijo", "dia_cobro": 1, "categoria": "Vivienda",
+        "tiers": [{"importe": 550.93, "meses": None}],
+    },
+    {
+        "concepto": "Préstamo BBVA JGB",
+        "tipo": "fijo", "dia_cobro": 5, "categoria": "Préstamos",
+        "tiers": [{"importe": 30.30, "meses": None}],
+    },
+    {
+        "concepto": "Kia Stonic",
+        "tipo": "fijo", "dia_cobro": 5, "categoria": "Préstamos",
+        "tiers": [{"importe": 246.04, "meses": None}],
+    },
+    {
+        "concepto": "AA Cetelem",
+        "tipo": "fijo", "dia_cobro": 5, "categoria": "Préstamos",
+        "tiers": [{"importe": 124.82, "meses": None}],
+    },
+    {
+        "concepto": "Préstamo COFIDIS",
+        "tipo": "fijo", "dia_cobro": 5, "categoria": "Préstamos",
+        "tiers": [{"importe": 238.40, "meses": None}],
+    },
+    {
+        "concepto": "Préstamo CETELEM",
+        "tipo": "fijo", "dia_cobro": 5, "categoria": "Préstamos",
+        "tiers": [{"importe": 308.96, "meses": None}],
+    },
+    {
+        "concepto": "Inglés Caja Rural",
+        "tipo": "fijo", "dia_cobro": 1, "categoria": "Educación",
+        "tiers": [{"importe": 74.22, "meses": None}],
+    },
+    {
+        "concepto": "Móvil + Internet",
+        "tipo": "fijo", "dia_cobro": 1, "categoria": "Vivienda",
+        "tiers": [{"importe": 109.00, "meses": None}],
+    },
+    {
+        "concepto": "Comunidad",
+        "tipo": "fijo", "dia_cobro": 1, "categoria": "Vivienda",
+        "tiers": [{"importe": 80.00, "meses": None}],
+    },
+    {
+        "concepto": "Sanitas Dental",
+        "tipo": "fijo", "dia_cobro": 1, "categoria": "Salud",
+        "tiers": [{"importe": 59.90, "meses": None}],
+    },
+    {
+        "concepto": "Netflix",
+        "tipo": "fijo", "dia_cobro": 15, "categoria": "Suscripciones",
+        "tiers": [{"importe": 14.99, "meses": None}],
+    },
+    {
+        "concepto": "Disney+",
+        "tipo": "fijo", "dia_cobro": 15, "categoria": "Suscripciones",
+        "tiers": [{"importe": 10.99, "meses": None}],
+    },
+    {
+        "concepto": "Max",
+        "tipo": "fijo", "dia_cobro": 15, "categoria": "Suscripciones",
+        "tiers": [{"importe": 7.99, "meses": None}],
+    },
+    {
+        "concepto": "Spotify",
+        "tipo": "fijo", "dia_cobro": 15, "categoria": "Suscripciones",
+        "tiers": [{"importe": 16.99, "meses": None}],
+    },
+    {
+        "concepto": "HP Printer",
+        "tipo": "fijo", "dia_cobro": 15, "categoria": "Suscripciones",
+        "tiers": [{"importe": 1.79, "meses": None}],
+    },
+    {
+        "concepto": "Paga Carlos",
+        "tipo": "fijo", "dia_cobro": 1, "categoria": "Otros",
+        "tiers": [{"importe": 21.73, "meses": None}],
+    },
+    # --- Estacionales con múltiples tramos ---
+    {
+        "concepto": "Luz",
+        "tipo": "estacional", "dia_cobro": 15, "categoria": "Vivienda",
+        "tiers": [
+            {"importe": 150.00, "meses": [7, 8, 9]},
+            {"importe": 120.00, "meses": [5, 6, 10, 11]},
+            {"importe": 100.00, "meses": [1, 2, 3, 4, 12]},
+        ],
+    },
+    {
+        "concepto": "Gas",
+        "tipo": "estacional", "dia_cobro": 15, "categoria": "Vivienda",
+        "tiers": [
+            {"importe": 90.00,  "meses": [6, 8, 10]},
+            {"importe": 130.00, "meses": [4, 12]},
+            {"importe": 200.00, "meses": [2]},
+        ],
+    },
+    {
+        "concepto": "Remesas",
+        "tipo": "estacional", "dia_cobro": 15, "categoria": "Otros",
+        "tiers": [
+            {"importe": 100.00, "meses": [1, 3, 5, 7, 9, 11]},
+            {"importe": 200.00, "meses": [4, 6, 8, 10, 12]},
+            {"importe": 300.00, "meses": [2]},
+        ],
+    },
+    # --- Estacionales de tramo único ---
+    {
+        "concepto": "Agua (bimestral)",
+        "tipo": "estacional", "dia_cobro": 15, "categoria": "Vivienda",
+        "tiers": [{"importe": 50.00, "meses": [1, 3, 5, 7, 9, 11]}],
+    },
+    {
+        "concepto": "Comedor colegio",
+        "tipo": "estacional", "dia_cobro": 1, "categoria": "Educación",
+        "tiers": [{"importe": 121.00, "meses": [2, 3, 4, 5, 6]}],
+    },
+    {
+        "concepto": "Comedor colegio (inicio)",
+        "tipo": "estacional", "dia_cobro": 1, "categoria": "Educación",
+        "tiers": [{"importe": 242.00, "meses": [10]}],
+    },
+    {
+        "concepto": "Seguro Toyota",
+        "tipo": "estacional", "dia_cobro": 1, "categoria": "Seguros",
+        "tiers": [{"importe": 471.64, "meses": [9]}],
+    },
+    {
+        "concepto": "Seguro Kia",
+        "tipo": "estacional", "dia_cobro": 1, "categoria": "Seguros",
+        "tiers": [{"importe": 121.82, "meses": [2, 4]}],
+    },
+    {
+        "concepto": "Seguro Hogar",
+        "tipo": "estacional", "dia_cobro": 1, "categoria": "Seguros",
+        "tiers": [{"importe": 98.12, "meses": [2, 5, 8, 11]}],
+    },
+    {
+        "concepto": "Seguro Vida",
+        "tipo": "estacional", "dia_cobro": 1, "categoria": "Seguros",
+        "tiers": [{"importe": 121.91, "meses": [2, 5, 8, 11]}],
+    },
+    {
+        "concepto": "Amazon Prime",
+        "tipo": "estacional", "dia_cobro": 1, "categoria": "Suscripciones",
+        "tiers": [{"importe": 49.99, "meses": [9]}],
+    },
+    {
+        "concepto": "Microsoft 365",
+        "tipo": "estacional", "dia_cobro": 1, "categoria": "Suscripciones",
+        "tiers": [{"importe": 129.99, "meses": [8]}],
+    },
+    {
+        "concepto": "Mantenimiento caldera",
+        "tipo": "estacional", "dia_cobro": 1, "categoria": "Vivienda",
+        "tiers": [{"importe": 155.05, "meses": [5]}],
+    },
+    {
+        "concepto": "Comisión tarjeta",
+        "tipo": "estacional", "dia_cobro": 1, "categoria": "Otros",
+        "tiers": [{"importe": 80.00, "meses": [7]}],
+    },
 ]
 
 
 def seed():
+    """Populate the database with default categories and recurring expenses.
+
+    Only inserts recurring expenses when the table is empty, so it is safe
+    to call on every startup.
+    """
     db = SessionLocal()
     try:
-        # Categories
         existing = {c.nombre for c in db.query(Category).all()}
         for data in CATEGORIES:
             if data["nombre"] not in existing:
                 db.add(Category(**data))
         db.flush()
 
-        # Recurring expenses
         if db.query(RecurringExpense).count() == 0:
             for data in RECURRING_EXPENSES:
-                db.add(RecurringExpense(**data))
+                tiers_data = data["tiers"]
+                expense_data = {k: v for k, v in data.items() if k != "tiers"}
+                expense = RecurringExpense(**expense_data, importe=Decimal("0"))
+                db.add(expense)
+                db.flush()
+                for tier in tiers_data:
+                    db.add(RecurringExpenseTier(
+                        expense_id=expense.id,
+                        importe=Decimal(str(tier["importe"])),
+                        meses=tier["meses"],
+                    ))
 
         db.commit()
         print("Seed completado.")

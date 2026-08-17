@@ -82,10 +82,40 @@ export interface UploadResult {
   paypal_passthroughs_marked: number;
 }
 
+export interface RecurringExpenseTierIn {
+  importe: number;
+  meses: number[] | null;
+}
+
+export interface RecurringExpenseTierOut {
+  importe: number;
+  meses: number[] | null;
+}
+
+export interface RecurringExpenseCreate {
+  concepto: string;
+  tiers: RecurringExpenseTierIn[];
+}
+
+export interface RecurringExpenseUpdate {
+  concepto: string;
+  tiers: RecurringExpenseTierIn[];
+}
+
+export interface RecurringExpenseOut {
+  id: number;
+  concepto: string;
+  tipo: string;
+  tiers: RecurringExpenseTierOut[];
+}
+
 export interface ForecastCategoryItem {
+  id?: number;           // Present for gastos_fijos (RecurringExpense.id)
   nombre: string;
   importe_planificado: number;
   importe_real: number;
+  meses?: number[] | null; // Present for gastos_fijos; null = every month
+  tiers?: RecurringExpenseTierOut[];
 }
 
 export interface ForecastCategoryInput {

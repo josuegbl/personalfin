@@ -1,4 +1,4 @@
-import type { Account, Transaction, Category, DashboardData, UploadResult, ForecastData, ForecastPlanUpdate } from "../types";
+import type { Account, Transaction, Category, DashboardData, UploadResult, ForecastData, ForecastPlanUpdate, RecurringExpenseCreate, RecurringExpenseOut, RecurringExpenseUpdate } from "../types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
 const BASE = `${API_BASE_URL}/api/v1`;
@@ -45,6 +45,11 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
+async function del(path: string): Promise<void> {
+  const res = await fetch(BASE + path, { method: "DELETE" });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+}
+
 async function uploadFile<T>(path: string, file: File): Promise<T> {
   const form = new FormData();
   form.append("file", file);
@@ -86,5 +91,10 @@ export const api = {
     get: (year: number, month: number) => get<ForecastData>(`/forecast/${year}/${month}`),
     save: (year: number, month: number, body: ForecastPlanUpdate) =>
       put<ForecastData>(`/forecast/${year}/${month}`, body),
+  },
+  recurringExpenses: {
+    create: (body: RecurringExpenseCreate) => post<RecurringExpenseOut>("/recurring-expenses/", body),
+    update: (id: number, body: RecurringExpenseUpdate) => patch<RecurringExpenseOut>(`/recurring-expenses/${id}`, body),
+    delete: (id: number) => del(`/recurring-expenses/${id}`),
   },
 };
