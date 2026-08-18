@@ -1,6 +1,6 @@
 import type { Account, Transaction, Category, DashboardData, UploadResult, ForecastData, ForecastPlanUpdate, RecurringExpenseCreate, RecurringExpenseOut, RecurringExpenseUpdate } from "../types";
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const BASE = `${API_BASE_URL}/api/v1`;
 
 async function get<T>(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {

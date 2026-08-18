@@ -159,10 +159,10 @@ def trigger_sync(account_id: int, background_tasks: BackgroundTasks, db: Session
 
 @router.post("/")
 def trigger_all_sync(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Sync automático para todos los proveedores que lo soporten (PayPal)."""
+    """Sync automático para cuentas PayPal activas."""
     accounts = (
         db.query(Account)
-        .filter(Account.activa == True, Account.proveedor.in_(AUTO_ADAPTERS.keys()))
+        .filter(Account.activa == True, Account.proveedor == "PayPal")
         .all()
     )
     for account in accounts:

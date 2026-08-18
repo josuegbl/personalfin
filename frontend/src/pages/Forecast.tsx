@@ -737,7 +737,7 @@ function ExecRow({ label, plan, real, colorScheme = "expense", bold = false }: E
       <td className={clsx("py-2.5 px-4 text-sm", bold ? "font-semibold text-gray-900" : "text-gray-700")}>
         {label}
       </td>
-      <td className="py-2.5 px-4 text-sm text-right tabular-nums text-gray-800">
+      <td className="py-2.5 px-4 text-sm text-right tabular-nums text-gray-800 hidden sm:table-cell">
         {formatCurrency(plan)}
       </td>
       <td className="py-2.5 px-4 text-sm text-right tabular-nums text-gray-800">
@@ -778,57 +778,60 @@ function ExecTab({ data }: ExecTabProps) {
       {/* Summary table */}
       <Card>
         <SectionHeader title="Resumen del mes" />
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-100">
-              {["Concepto", "Planificado", "Real", "Diferencia"].map((h) => (
-                <th
-                  key={h}
-                  className={clsx(
-                    "pb-2 text-xs font-semibold text-gray-500 uppercase tracking-wide",
-                    h === "Concepto" ? "text-left px-4" : "text-right px-4"
-                  )}
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            <ExecRow
-              label="Ingresos"
-              plan={data.total_ingresos_plan}
-              real={data.ingresos_reales}
-              colorScheme="income"
-            />
-            <ExecRow
-              label="Gastos fijos"
-              plan={data.total_gastos_fijos_plan}
-              real={0}
-              colorScheme="expense"
-            />
-            <ExecRow
-              label="Gastos variables"
-              plan={data.total_gastos_variables_plan}
-              real={data.total_gastos_reales}
-              colorScheme="expense"
-            />
-            <ExecRow
-              label="Total gastos"
-              plan={totalGastosPlan}
-              real={data.total_gastos_reales}
-              colorScheme="expense"
-              bold
-            />
-            <ExecRow
-              label="Ahorro"
-              plan={data.ahorro_estimado}
-              real={data.ahorro_real}
-              colorScheme="saving"
-              bold
-            />
-          </tbody>
-        </table>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-100">
+                {["Concepto", "Planificado", "Real", "Diferencia"].map((h) => (
+                  <th
+                    key={h}
+                    className={clsx(
+                      "pb-2 text-xs font-semibold text-gray-500 uppercase tracking-wide",
+                      h === "Concepto" ? "text-left px-4" : "text-right px-4",
+                      h === "Planificado" && "hidden sm:table-cell"
+                    )}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <ExecRow
+                label="Ingresos"
+                plan={data.total_ingresos_plan}
+                real={data.ingresos_reales}
+                colorScheme="income"
+              />
+              <ExecRow
+                label="Gastos fijos"
+                plan={data.total_gastos_fijos_plan}
+                real={0}
+                colorScheme="expense"
+              />
+              <ExecRow
+                label="Gastos variables"
+                plan={data.total_gastos_variables_plan}
+                real={data.total_gastos_reales}
+                colorScheme="expense"
+              />
+              <ExecRow
+                label="Total gastos"
+                plan={totalGastosPlan}
+                real={data.total_gastos_reales}
+                colorScheme="expense"
+                bold
+              />
+              <ExecRow
+                label="Ahorro"
+                plan={data.ahorro_estimado}
+                real={data.ahorro_real}
+                colorScheme="saving"
+                bold
+              />
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       {/* Variable category detail */}
@@ -844,43 +847,46 @@ function ExecTab({ data }: ExecTabProps) {
             </span>
           </button>
           {showCatDetail && (
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  {["Categoría", "Planificado", "Real", "Diferencia"].map((h) => (
-                    <th
-                      key={h}
-                      className={clsx(
-                        "pb-2 text-xs font-semibold text-gray-500 uppercase tracking-wide",
-                        h === "Categoría" ? "text-left px-4" : "text-right px-4"
-                      )}
-                    >
-                      {h}
-                    </th>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    {["Categoría", "Planificado", "Real", "Diferencia"].map((h) => (
+                      <th
+                        key={h}
+                        className={clsx(
+                          "pb-2 text-xs font-semibold text-gray-500 uppercase tracking-wide",
+                          h === "Categoría" ? "text-left px-4" : "text-right px-4",
+                          h === "Planificado" && "hidden sm:table-cell"
+                        )}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {varCategoriesWithReal.map((cat) => (
+                    <ExecRow
+                      key={cat.nombre}
+                      label={cat.nombre}
+                      plan={cat.plan}
+                      real={cat.real}
+                      colorScheme="expense"
+                    />
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {varCategoriesWithReal.map((cat) => (
-                  <ExecRow
-                    key={cat.nombre}
-                    label={cat.nombre}
-                    plan={cat.plan}
-                    real={cat.real}
-                    colorScheme="expense"
-                  />
-                ))}
-                {unplannedCategories.map((cat) => (
-                  <ExecRow
-                    key={cat.nombre}
-                    label={`${cat.nombre} (sin plan)`}
-                    plan={0}
-                    real={cat.importe_real}
-                    colorScheme="expense"
-                  />
-                ))}
-              </tbody>
-            </table>
+                  {unplannedCategories.map((cat) => (
+                    <ExecRow
+                      key={cat.nombre}
+                      label={`${cat.nombre} (sin plan)`}
+                      plan={0}
+                      real={cat.importe_real}
+                      colorScheme="expense"
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       )}
@@ -967,14 +973,14 @@ export default function Forecast() {
   return (
     <div className="p-6 space-y-5 max-w-2xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Previsión mensual</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Planifica y controla el presupuesto</p>
+          <p className="text-sm text-gray-500 mt-0.5 hidden sm:block">Planifica y controla el presupuesto</p>
         </div>
 
         {/* Month selector */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
             onClick={handlePrev}
             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"

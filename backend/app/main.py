@@ -12,7 +12,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:3000",
+        "http://192.168.1.51:5173",
+        "http://192.168.1.51:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -107,7 +113,7 @@ def _seed_categories():
 
 def _seed_recurring_expenses():
     from app.core.database import SessionLocal
-    from app.models.recurring_expense import RecurringExpense
+    from app.models.recurring_expense import RecurringExpense, RecurringExpenseTier
     from app.seed import RECURRING_EXPENSES
 
     db = SessionLocal()
@@ -115,7 +121,14 @@ def _seed_recurring_expenses():
         if db.query(RecurringExpense).count() > 0:
             return
         for data in RECURRING_EXPENSES:
-            db.add(RecurringExpense(**data))
+            tiers_data = data.get("tiers", [])
+            expense_data = {k: v for k, v in data.items() if k != "tiers"}
+            if "importe" not in expense_data and tiers_data:
+                catchall = next((t for t in tiers_data if t.get("meses") is None), tiers_data[0])
+                expense_data["importe"] = catchall["importe"]
+            expense = RecurringExpense(**expense_data)
+            expense.tiers = [RecurringExpenseTier(**t) for t in tiers_data]
+            db.add(expense)
         db.commit()
     finally:
         db.close()

@@ -50,70 +50,114 @@ export default function Transactions() {
         </select>
       </div>
 
-      {/* Table */}
+      {/* Table / Card list */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         {isLoading ? (
           <div className="p-8 text-center text-gray-400 text-sm">Cargando movimientos…</div>
         ) : !transactions?.length ? (
           <div className="p-8 text-center text-gray-400 text-sm">Sin movimientos</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
-                <th className="px-4 py-3 text-left">Fecha</th>
-                <th className="px-4 py-3 text-left">Concepto</th>
-                <th className="px-4 py-3 text-left">Cuenta</th>
-                <th className="px-4 py-3 text-left">Categoría</th>
-                <th className="px-4 py-3 text-right">Importe</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
+          <>
+            {/* Desktop table */}
+            <div className="hidden sm:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="px-4 py-3 text-left">Fecha</th>
+                    <th className="px-4 py-3 text-left">Concepto</th>
+                    <th className="px-4 py-3 text-left">Cuenta</th>
+                    <th className="px-4 py-3 text-left">Categoría</th>
+                    <th className="px-4 py-3 text-right">Importe</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {transactions.map((t) => {
+                    const isGasto = t.importe < 0;
+                    const account = accounts?.find((a) => a.id === t.account_id);
+                    return (
+                      <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{formatDate(t.fecha)}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className={clsx("p-1 rounded-full", isGasto ? "bg-red-50 text-red-500" : "bg-green-50 text-green-600")}>
+                              {isGasto ? <ArrowDownLeft size={12} /> : <ArrowUpRight size={12} />}
+                            </span>
+                            <div>
+                              <p className="text-gray-900 font-medium truncate max-w-xs">
+                                {t.comercio || t.concepto_original}
+                              </p>
+                              {t.recurrente && (
+                                <span className="text-xs text-purple-500 font-medium">Recurrente</span>
+                              )}
+                              {t.origen === "paypal" && (
+                                <span className="ml-1 text-xs text-sky-500 font-medium">PayPal</span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">{account?.alias ?? "—"}</td>
+                        <td className="px-4 py-3">
+                          {t.categoria ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                              style={{ background: t.categoria.color ?? "#94a3b8" }}
+                            >
+                              {t.categoria.icono} {t.categoria.nombre}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">Sin categoría</span>
+                          )}
+                        </td>
+                        <td className={clsx("px-4 py-3 text-right font-semibold tabular-nums", isGasto ? "text-red-600" : "text-green-600")}>
+                          {isGasto ? "" : "+"}
+                          {formatCurrency(t.importe)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile card list */}
+            <div className="sm:hidden divide-y divide-gray-100">
               {transactions.map((t) => {
                 const isGasto = t.importe < 0;
                 const account = accounts?.find((a) => a.id === t.account_id);
                 return (
-                  <tr key={t.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{formatDate(t.fecha)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className={clsx("p-1 rounded-full", isGasto ? "bg-red-50 text-red-500" : "bg-green-50 text-green-600")}>
-                          {isGasto ? <ArrowDownLeft size={12} /> : <ArrowUpRight size={12} />}
+                  <div key={t.id} className="flex items-start gap-3 px-4 py-3">
+                    <span className={clsx("p-1 rounded-full mt-0.5 shrink-0", isGasto ? "bg-red-50 text-red-500" : "bg-green-50 text-green-600")}>
+                      {isGasto ? <ArrowDownLeft size={12} /> : <ArrowUpRight size={12} />}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {t.comercio || t.concepto_original}
+                        </p>
+                        <span className={clsx("font-semibold tabular-nums shrink-0", isGasto ? "text-red-600" : "text-green-600")}>
+                          {isGasto ? "" : "+"}{formatCurrency(t.importe)}
                         </span>
-                        <div>
-                          <p className="text-gray-900 font-medium truncate max-w-xs">
-                            {t.comercio || t.concepto_original}
-                          </p>
-                          {t.recurrente && (
-                            <span className="text-xs text-purple-500 font-medium">Recurrente</span>
-                          )}
-                          {t.origen === "paypal" && (
-                            <span className="ml-1 text-xs text-sky-500 font-medium">PayPal</span>
-                          )}
-                        </div>
                       </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">{account?.alias ?? "—"}</td>
-                    <td className="px-4 py-3">
-                      {t.categoria ? (
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                          style={{ background: t.categoria.color ?? "#94a3b8" }}
-                        >
-                          {t.categoria.icono} {t.categoria.nombre}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">Sin categoría</span>
-                      )}
-                    </td>
-                    <td className={clsx("px-4 py-3 text-right font-semibold tabular-nums", isGasto ? "text-red-600" : "text-green-600")}>
-                      {isGasto ? "" : "+"}
-                      {formatCurrency(t.importe)}
-                    </td>
-                  </tr>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-xs text-gray-400">{formatDate(t.fecha)}</span>
+                        {account && <span className="text-xs text-gray-400">{account.alias}</span>}
+                        {t.categoria && (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                            style={{ background: t.categoria.color ?? "#94a3b8" }}
+                          >
+                            {t.categoria.icono} {t.categoria.nombre}
+                          </span>
+                        )}
+                        {t.recurrente && <span className="text-xs text-purple-500 font-medium">Recurrente</span>}
+                        {t.origen === "paypal" && <span className="text-xs text-sky-500 font-medium">PayPal</span>}
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+          </>
         )}
       </div>
 
