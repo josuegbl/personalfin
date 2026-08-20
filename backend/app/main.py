@@ -2,12 +2,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import router
 from app.core.database import engine, Base
+from app.seed import ensure_forecast_catalog
 import app.models  # noqa: F401 – registra todos los modelos en Base.metadata
 
 app = FastAPI(
     title="BankFinances API",
     description="API de gestión de economía familiar",
     version="1.0.0",
+    redirect_slashes=False,
 )
 
 app.add_middleware(
@@ -32,58 +34,31 @@ def startup():
     Base.metadata.create_all(bind=engine)
     _seed_categories()
     _seed_recurring_expenses()
+    ensure_forecast_catalog()
 
 
 def _seed_categories():
     from app.core.database import SessionLocal
-    from app.models.category import Category, CategorizationRule
+    from app.models.category import Category
 
-    # (nombre, icono, color, es_compartida_por_defecto)
+    # (nombre, icono, color, compartida, naturaleza, incluida_en_analisis)
     CATEGORIAS = [
-        ("Vivienda", "🏠", "#6366f1", True),
-        ("Alimentación", "🛒", "#22c55e", True),
-        ("Supermercado", "🛒", "#16a34a", True),
-        ("Gasolina", "⛽", "#f97316", False),
-        ("Transporte", "🚗", "#f59e0b", False),
-        ("Restaurantes", "🍽️", "#ec4899", False),
-        ("Ocio", "🎬", "#8b5cf6", False),
-        ("Salud", "💊", "#ef4444", False),
-        ("Educación", "📚", "#0ea5e9", True),
-        ("Seguros", "🛡️", "#64748b", True),
-        ("Impuestos", "🏛️", "#94a3b8", True),
-        ("Nómina", "💼", "#10b981", False),
-        ("Transferencias internas", "↔️", "#a3a3a3", False),
-        ("Suscripciones", "🔄", "#7c3aed", False),
-        ("PayPal", "💙", "#0070ba", False),
-        ("Otros", "📦", "#d1d5db", False),
-    ]
-
-    REGLAS = [
-        ("MERCADONA", "Supermercado"),
-        ("CARREFOUR", "Supermercado"),
-        ("DIA ", "Supermercado"),
-        ("LIDL", "Supermercado"),
-        ("ALCAMPO", "Supermercado"),
-        ("REPSOL", "Gasolina"),
-        ("CEPSA", "Gasolina"),
-        ("BP ", "Gasolina"),
-        ("GALP", "Gasolina"),
-        ("NETFLIX", "Suscripciones"),
-        ("SPOTIFY", "Suscripciones"),
-        ("AMAZON PRIME", "Suscripciones"),
-        ("HBO", "Suscripciones"),
-        ("DISNEY", "Suscripciones"),
-        ("PAYPAL", "PayPal"),
-        ("HIPOTECA", "Vivienda"),
-        ("COMUNIDAD", "Vivienda"),
-        ("IBERDROLA", "Vivienda"),
-        ("ENDESA", "Vivienda"),
-        ("NATURGY", "Vivienda"),
-        ("VODAFONE", "Vivienda"),
-        ("MOVISTAR", "Vivienda"),
-        ("ORANGE", "Vivienda"),
-        ("FARMACIA", "Salud"),
-        ("AMAZON", "Ocio"),
+        ("Vivienda", "🏠", "#6366f1", True, "gasto", True),
+        ("Alimentación", "🛒", "#22c55e", True, "gasto", True),
+        ("Supermercado", "🛒", "#16a34a", True, "gasto", True),
+        ("Gasolina", "⛽", "#f97316", False, "gasto", True),
+        ("Transporte", "🚗", "#f59e0b", False, "gasto", True),
+        ("Restaurantes", "🍽️", "#ec4899", False, "gasto", True),
+        ("Ocio", "🎬", "#8b5cf6", False, "gasto", True),
+        ("Salud", "💊", "#ef4444", False, "gasto", True),
+        ("Educación", "📚", "#0ea5e9", True, "gasto", True),
+        ("Seguros", "🛡️", "#64748b", True, "gasto", True),
+        ("Impuestos", "🏛️", "#94a3b8", True, "gasto", True),
+        ("Nómina", "💼", "#10b981", False, "ingreso", True),
+        ("Transferencias", None, "#a3a3a3", False, "transferencia", True),
+        ("Sin categoría", "?", "#94a3b8", False, "neutral", True),
+        ("Suscripciones", "🔄", "#7c3aed", False, "gasto", True),
+        ("Otros", "📦", "#d1d5db", False, "gasto", True),
     ]
 
     db = SessionLocal()
@@ -91,20 +66,39 @@ def _seed_categories():
         if db.query(Category).count() > 0:
             return
 
-        cat_map = {}
-        for nombre, icono, color, compartida in CATEGORIAS:
-            cat = Category(nombre=nombre, icono=icono, color=color, es_compartida_por_defecto=compartida)
-            db.add(cat)
-            db.flush()
-            cat_map[nombre] = cat.id
+        for nombre, icono, color, compartida, naturaleza, incluida in CATEGORIAS:
+            cat = db.query(Category).filter(Category.nombre == nombre).first()
+            if not cat:
+                cat = Category(
+                    nombre=nombre,
+                    icono=icono,
+                    color=color,
+                    es_compartida_por_defecto=compartida,
+                    naturaleza=naturaleza,
+                    incluida_en_analisis=incluida,
+                )
+                db.add(cat)
+                db.flush()
+            else:
+                cat.naturaleza = naturaleza
+                cat.incluida_en_analisis = incluida
 
-        for patron, cat_nombre in REGLAS:
-            rule = CategorizationRule(
-                patron=patron,
-                categoria_id=cat_map[cat_nombre],
-                prioridad=10,
-            )
-            db.add(rule)
+        transferencias = db.query(Category).filter(Category.nombre == "Transferencias").first()
+        if transferencias:
+            transfer_subcategories = [
+                ("Entrantes", "ingreso", True),
+                ("Salientes", "gasto", True),
+                ("Internas", "neutral", False),
+            ]
+            for nombre, naturaleza, incluida in transfer_subcategories:
+                subcategory = db.query(Category).filter(Category.nombre == nombre).first()
+                if not subcategory:
+                    subcategory = Category(nombre=nombre)
+                    db.add(subcategory)
+                subcategory.padre_id = transferencias.id
+                subcategory.color = transferencias.color
+                subcategory.naturaleza = naturaleza
+                subcategory.incluida_en_analisis = incluida
 
         db.commit()
     finally:

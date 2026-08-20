@@ -1,24 +1,11 @@
 import { Routes, Route, NavLink } from "react-router-dom";
-import { LayoutDashboard, ArrowLeftRight, Tag, RefreshCw, TrendingUp } from "lucide-react";
+import { LayoutDashboard, ArrowLeftRight, Tag, TrendingUp } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import Categories from "./pages/Categories";
 import Forecast from "./pages/Forecast";
-import { api } from "./api/client";
-import { useState } from "react";
 
 export default function App() {
-  const [syncing, setSyncing] = useState(false);
-
-  async function handleSyncAll() {
-    setSyncing(true);
-    try {
-      await api.accounts.syncAll();
-    } finally {
-      setSyncing(false);
-    }
-  }
-
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
       {/* Sidebar — desktop only */}
@@ -34,17 +21,6 @@ export default function App() {
           <NavItem to="/categories" icon={<Tag size={16} />} label="Categorías" />
           <NavItem to="/forecast" icon={<TrendingUp size={16} />} label="Previsión" />
         </nav>
-
-        <div className="p-3 border-t border-gray-700">
-          <button
-            onClick={handleSyncAll}
-            disabled={syncing}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 transition-colors"
-          >
-            <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
-            {syncing ? "Sincronizando…" : "Sincronizar todo"}
-          </button>
-        </div>
       </aside>
 
       {/* Main content */}
@@ -63,14 +39,6 @@ export default function App() {
         <NavItem to="/transactions" icon={<ArrowLeftRight size={20} />} label="Movimientos" mobile />
         <NavItem to="/categories" icon={<Tag size={20} />} label="Categorías" mobile />
         <NavItem to="/forecast" icon={<TrendingUp size={20} />} label="Previsión" mobile />
-        <button
-          onClick={handleSyncAll}
-          disabled={syncing}
-          className="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-xs text-gray-300 hover:text-white disabled:opacity-50 transition-colors"
-        >
-          <RefreshCw size={20} className={syncing ? "animate-spin" : ""} />
-          Sync
-        </button>
       </nav>
     </div>
   );

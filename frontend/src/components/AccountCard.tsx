@@ -1,4 +1,4 @@
-import { Building2, Wallet, RefreshCw, Upload } from "lucide-react";
+import { Building2, RefreshCw, Upload } from "lucide-react";
 import type { AccountBalance } from "../types";
 import { formatCurrency, formatDate } from "../utils/format";
 import { api } from "../api/client";
@@ -19,12 +19,6 @@ const PROVIDER_STYLES: Record<string, { bg: string; border: string; badge: strin
     border: "border-green-500",
     badge: "bg-green-900/50 text-green-100",
     icon: "text-green-200",
-  },
-  PayPal: {
-    bg: "bg-gradient-to-br from-indigo-600 to-sky-700",
-    border: "border-sky-500",
-    badge: "bg-sky-900/50 text-sky-100",
-    icon: "text-sky-200",
   },
 };
 
@@ -55,8 +49,6 @@ export default function AccountCard({ data }: { data: AccountBalance }) {
     }
   }
 
-  const isPayPal = account.tipo === "paypal";
-
   return (
     <>
     <div className={clsx("rounded-2xl p-5 text-white shadow-lg border", style.bg, style.border)}>
@@ -64,7 +56,7 @@ export default function AccountCard({ data }: { data: AccountBalance }) {
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-2">
           <div className={clsx("p-2 rounded-lg bg-white/10", style.icon)}>
-            {isPayPal ? <Wallet size={18} /> : <Building2 size={18} />}
+            <Building2 size={18} />
           </div>
           <div>
             <p className="font-semibold text-sm">{account.alias}</p>
@@ -79,15 +71,13 @@ export default function AccountCard({ data }: { data: AccountBalance }) {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          {account.proveedor !== "PayPal" && (
-            <button
-              onClick={() => setShowUpload(true)}
-              title="Importar extracto"
-              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-            >
-              <Upload size={13} />
-            </button>
-          )}
+          <button
+            onClick={() => setShowUpload(true)}
+            title="Importar extracto"
+            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+          >
+            <Upload size={13} />
+          </button>
           <button
             onClick={handleSync}
             disabled={syncing}
@@ -110,7 +100,7 @@ export default function AccountCard({ data }: { data: AccountBalance }) {
       {/* Footer */}
       <div className="flex items-center justify-between text-xs">
         <span className={clsx("px-2 py-0.5 rounded-full font-medium", style.badge)}>
-          {account.tipo === "paypal" ? "PayPal" : account.iban ? `····${account.iban.slice(-4)}` : "Cuenta"}
+          {account.iban ? `····${account.iban.slice(-4)}` : "Cuenta"}
         </span>
         <div className="flex items-center gap-1 opacity-60">
           {account.ultima_sync ? (

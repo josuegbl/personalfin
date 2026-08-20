@@ -14,7 +14,7 @@ class AccountBase(BaseModel):
 
 
 class AccountCreate(AccountBase):
-    pass
+    visible_dashboard: bool = True
 
 
 class AccountUpdate(BaseModel):
@@ -23,12 +23,14 @@ class AccountUpdate(BaseModel):
     saldo_actual: Decimal | None = None
     activa: bool | None = None
     propietario: str | None = None
+    visible_dashboard: bool | None = None
 
 
 class AccountOut(AccountBase):
     id: int
     saldo_actual: Decimal
     activa: bool
+    visible_dashboard: bool
     ultima_sync: datetime | None
     sync_error: str | None
     created_at: datetime

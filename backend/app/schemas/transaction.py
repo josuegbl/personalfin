@@ -15,8 +15,6 @@ class TransactionBase(BaseModel):
     subcategoria: str | None = None
     recurrente: bool = False
     origen: TransactionOrigin = TransactionOrigin.bank
-    paypal_transaction_id: str | None = None
-    excluir_de_gastos: bool = False
     notas: str | None = None
 
 
@@ -48,6 +46,5 @@ class TransactionFilter(BaseModel):
     fecha_hasta: date | None = None
     comercio: str | None = None
     recurrente: bool | None = None
-    excluir_pasthrough: bool = True
     page: int = 1
     page_size: int = 50

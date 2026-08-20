@@ -17,7 +17,6 @@ def list_transactions(
     fecha_hasta: date | None = Query(None),
     comercio: str | None = Query(None),
     recurrente: bool | None = Query(None),
-    excluir_pasthrough: bool = Query(True),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -37,9 +36,6 @@ def list_transactions(
         filters.append(Transaction.comercio.ilike(f"%{comercio}%"))
     if recurrente is not None:
         filters.append(Transaction.recurrente == recurrente)
-    if excluir_pasthrough:
-        filters.append(Transaction.excluir_de_gastos == False)
-
     if filters:
         q = q.filter(and_(*filters))
 

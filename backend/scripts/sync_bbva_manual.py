@@ -281,7 +281,7 @@ def main() -> None:
     print(f"\n✅ Importación completada:")
     print(f"   Nuevas transacciones: {result.get('imported', 0)}")
     print(f"   Total en archivo:     {result.get('total_in_file', 0)}")
-    print(f"   Duplicados omitidos:  {result.get('skipped_duplicates', 0)}")
+    print(f"   Movimientos ya existentes omitidos:  {result.get('skipped_existing', 0)}")
     if result.get("balance"):
         print(f"   Saldo actualizado:    {result['balance']:.2f} €")
 

@@ -11,11 +11,12 @@ class FixedExpenseTier(BaseModel):
 class ForecastCategoryItem(BaseModel):
     """A single line item with planned and real amounts."""
 
-    id: int | None = None  # Present only for gastos_fijos (RecurringExpense.id)
+    id: int | None = None
+    categoria: str | None = None
     nombre: str
     importe_planificado: float
     importe_real: float
-    meses: list[int] | None = None  # Present only for gastos_fijos; None = every month
+    meses: list[int] | None = None
     tiers: list[FixedExpenseTier] = []
 
     model_config = {"from_attributes": True}
@@ -28,44 +29,70 @@ class ForecastCategoryInput(BaseModel):
     importe_planificado: float
 
 
+class FixedCategoryGroup(BaseModel):
+    """Grouped fixed expenses by parent category."""
+
+    categoria: str
+    subcategorias: list[ForecastCategoryItem]
+
+
 class ForecastPlanUpdate(BaseModel):
     """Request body for creating or updating a monthly forecast plan."""
 
+    cuenta_personal_josue: float
+    cuenta_personal_adi: float
+    ingresos_planificados: float | None = None
     ingresos_josue: float
     ingresos_adi: float
-    ingresos_extra: float
     categorias: list[ForecastCategoryInput]
 
 
 class ForecastResponse(BaseModel):
-    """Complete forecast data for a single month: plan + real execution."""
+    """Complete forecast data for a single month: plan + real execution.
+
+    Income rule:
+      - ingresos_nomina: salaries received in month M-1. They are available
+        income for month M.
+      - ingresos_otros: all other positive non-excluded transactions from month M
+        (refunds, miscellaneous transfers, etc.) counted in the current month.
+      - ingresos_reales: total available income = nomina + otros.
+    """
 
     anio: int
     mes: int
+    es_ejecucion: bool
 
-    # Planned revenues
-    ingresos_josue: float
-    ingresos_adi: float
-    ingresos_extra: float
+    # Personal budget allocations; treated as a separate expense in execution.
+    cuenta_personal_josue: float
+    cuenta_personal_adi: float
 
-    # Fixed expenses from recurring_expenses for the month (read-only, importe_real = 0)
+    # User-editable planned income (gross nóminas). None = no manual override.
+    ingresos_planificados: float | None
+    ingresos_josue: float   # effective planned gross income for Josué
+    ingresos_adi: float     # effective planned gross income for Adi
+
+    # Income breakdown (computed from actual transactions)
+    ingresos_nomina: float   # Salaries from M-1
+    ingresos_otros: float    # Other income from current month M
+    ingresos_reales: float   # Total = nomina + otros
+
+    # Fixed expenses from recurring_expenses (read-only)
     gastos_fijos: list[ForecastCategoryItem]
+    gastos_fijos_por_categoria: list[FixedCategoryGroup]
 
-    # Variable category budgets saved by the user (importe_real = actual category spend)
+    # Variable category budgets saved by the user
     gastos_variables: list[ForecastCategoryItem]
 
-    # All actual spending per category for the month (for ejecución detail view)
+    # All actual spending per category for the month
     gastos_reales_por_categoria: list[ForecastCategoryItem]
 
-    # Computed plan totals
-    total_ingresos_plan: float
+    # Computed totals
+    total_cuentas_personales_plan: float
     total_gastos_fijos_plan: float
     total_gastos_variables_plan: float
-    ahorro_estimado: float
+    ahorro_estimado: float   # planned salaries - personal - fixed - variable expenses
 
-    # Real execution totals
-    ingresos_reales: float
-    total_gastos_reales: float
-    ahorro_real: float
+    total_gastos_reales: float  # Transaction expenses plus personal allocations
+    ahorro_real: float       # ingresos_reales - gastos_reales
 
     model_config = {"from_attributes": True}

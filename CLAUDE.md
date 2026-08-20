@@ -76,9 +76,6 @@ python scripts/inspect_eurocaja.py
 ## Architecture
 
 ```
-React (Vite + TailwindCSS)  →  FastAPI (:8000)  →  PostgreSQL (:5432)
-```
-
 **Backend layout** (`backend/app/`):
 - `api/v1/` — FastAPI routers: `accounts`, `transactions`, `categories`, `dashboard`, `sync`
 - `models/` — SQLAlchemy ORM models (`Account`, `Transaction`, `Category`, `RecurringExpense`)
@@ -103,7 +100,7 @@ React (Vite + TailwindCSS)  →  FastAPI (:8000)  →  PostgreSQL (:5432)
 The `SourceAdapter` ABC (`services/sync/base.py`) defines the interface all adapters implement:
 - `fetch_transactions() → list[RawTransaction]`
 - `fetch_balance() → Decimal`
-- `sync()` orchestrates fetch → persist → deduplication
+- `sync()` orchestrates fetch → persist, preserving the CSV/provider movement as the source of truth
 
 **BBVA** has two sync modes:
 - **Semi-automático** (recommended): `scripts/sync_bbva_manual.py` opens a browser, the user logs in, Playwright downloads the Excel and POSTs it to the backend. Requires headless=False; BBVA blocks all headless modes (PerimeterX/Kasada anti-bot).
@@ -115,29 +112,27 @@ The `SourceAdapter` ABC (`services/sync/base.py`) defines the interface all adap
 
 **PayPal** uses the REST API v2 (OAuth 2.0 client credentials) and supports automatic sync (`POST /api/v1/sync/{account_id}`).
 
-`CSVImportAdapter` (in `base.py`) wraps already-parsed `RawTransaction` lists so they go through the same persist + deduplication pipeline.
+`CSVImportAdapter` (in `base.py`) wraps already-parsed `RawTransaction` lists so they go through the same persist pipeline.
 
-## Deduplication Rules
+## Movement identity and categorization
 
-Two deduplication passes run automatically after every sync (inside `_persist`):
+The CSV/provider movement is the source of truth. Existing movements are skipped only when their SHA-256 `hash` matches `(account_id, fecha, importe, concepto)`; this prevents overlapping CSV imports from creating a second copy. This hash never changes financial meaning.
 
-1. **Internal transfers**: transactions between own accounts are matched by IBAN/alias in the concept or by matching amount ± 2 business days. Both legs get `excluir_de_gastos=True`, `categoria='Transferencias internas'`, and `transfer_estado='completo'`. If only one leg is found, it gets `transfer_estado='pendiente'`.
+All imported and migrated movements start in `Sin categoría`. The user classifies them manually from the Movimientos screen. `Transferencias Internas` is a regular category and does not trigger account matching.
 
-2. **PayPal passthroughs**: bank transactions whose concept contains "PAYPAL" are marked `excluir_de_gastos=True` to avoid double-counting the real PayPal transaction.
-
-Transaction uniqueness is enforced via a SHA-256 `hash` field computed from `(account_id, fecha, importe, concepto)`.
+Basic dashboard and forecast totals use the sign of the movement: positive amounts are income and negative amounts are expenses, including `Sin categoría` and transfers. Category metadata is currently descriptive and supports breakdowns; category-specific inclusion rules will be defined later. Payroll movements retain the `Nómina` category.
 
 ## Data Model Key Points
 
-- `transactions.excluir_de_gastos=True` → excluded from all spending totals. Always filter this out in analytics queries.
-- `transactions.transfer_pair_id` → self-referential FK linking two legs of an internal transfer; lower `id` points to the higher one.
+- `categories.naturaleza` defines whether a category is a `gasto`, `ingreso`, `transferencia`, or `neutral`.
+- `categories.incluida_en_analisis` controls whether categorized movements participate in dashboard and forecast totals.
 - `accounts.proveedor` drives adapter selection: `"BBVA"`, `"Eurocaja Rural"`, `"PayPal"`.
 - `accounts.sync_error` stores the last error message if a sync fails; `None` means OK.
 
 ## Startup Seeding
 
 On every startup (`app.main.startup`), two idempotent seeds run if the tables are empty:
-- **Categories + categorization rules** — hardcoded in `main.py` (`_seed_categories`)
+- **Categories** — hardcoded in `main.py` (`_seed_categories`)
 - **Recurring/seasonal expenses** — loaded from `app/seed.py` (`RECURRING_EXPENSES`)
 
 Alembic manages schema migrations; `Base.metadata.create_all` only fills gaps not covered by migrations.

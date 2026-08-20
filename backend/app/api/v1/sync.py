@@ -6,7 +6,6 @@ from app.models.account import Account
 from app.services.sync.base import CSVImportAdapter
 from app.services.sync.bbva import BBVAAdapter, BBVAPlaywrightAdapter
 from app.services.sync.eurocaja import EurocajaAdapter
-from app.services.sync.paypal import PayPalAdapter, mark_bank_passthroughs
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
@@ -18,7 +17,6 @@ CSV_PARSERS = {
 
 # Mapa de adaptadores automáticos
 AUTO_ADAPTERS = {
-    "PayPal": PayPalAdapter,
     "BBVA":   BBVAPlaywrightAdapter,
 }
 
@@ -92,22 +90,16 @@ async def upload_csv(
     adapter = CSVImportAdapter(account, db, transactions, final_balance)
     imported = adapter.sync()
 
-    # Actualizar marcado de passthroughs PayPal en cuentas bancarias:
-    # los cargos "RECIBO PayPal..." quedan excluidos de gastos porque el
-    # gasto real se registra en PayPal.
-    paypal_marked = mark_bank_passthroughs(db)
-
     return {
         "imported": imported,
         "total_in_file": len(transactions),
-        "skipped_duplicates": len(transactions) - imported,
+        "skipped_existing": len(transactions) - imported,
         "balance": float(final_balance),
-        "paypal_passthroughs_marked": paypal_marked,
     }
 
 
 # ------------------------------------------------------------------
-# Sync automático (solo PayPal)
+# Sync automático
 # ------------------------------------------------------------------
 
 def _run_auto_sync(account_id: int):
@@ -144,7 +136,7 @@ def _run_auto_sync(account_id: int):
 
 @router.post("/{account_id}")
 def trigger_sync(account_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Sync automático vía API (solo disponible para PayPal)."""
+    """Sync automático vía API para proveedores compatibles."""
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Cuenta no encontrada")
@@ -159,15 +151,12 @@ def trigger_sync(account_id: int, background_tasks: BackgroundTasks, db: Session
 
 @router.post("/")
 def trigger_all_sync(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Sync automático para cuentas PayPal activas."""
-    accounts = (
-        db.query(Account)
-        .filter(Account.activa == True, Account.proveedor == "PayPal")
-        .all()
-    )
-    for account in accounts:
+    """Sync automático para todas las cuentas activas con proveedor compatible."""
+    accounts = db.query(Account).filter(Account.activa == True).all()
+    auto_accounts = [a for a in accounts if a.proveedor in AUTO_ADAPTERS]
+    for account in auto_accounts:
         background_tasks.add_task(_run_auto_sync, account.id)
-    return {"status": "sync_started", "accounts": len(accounts)}
+    return {"status": "sync_started", "accounts": len(auto_accounts)}
 
 
 @router.get("/status")

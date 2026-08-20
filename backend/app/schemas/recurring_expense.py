@@ -32,6 +32,7 @@ class TierOut(BaseModel):
 class RecurringExpenseCreate(BaseModel):
     """Request body to create a new recurring expense with its price tiers."""
 
+    categoria: str
     concepto: str
     tiers: list[TierIn]
 
@@ -47,6 +48,7 @@ class RecurringExpenseCreate(BaseModel):
 class RecurringExpenseUpdate(BaseModel):
     """Request body to update a recurring expense (replaces all tiers)."""
 
+    categoria: str
     concepto: str
     tiers: list[TierIn]
 
@@ -63,6 +65,8 @@ class RecurringExpenseOut(BaseModel):
     """Response for a recurring expense including all tiers."""
 
     id: int
+    categoria: str | None = None
+    subcategoria_id: int | None = None
     concepto: str
     tipo: str
     tiers: list[TierOut]

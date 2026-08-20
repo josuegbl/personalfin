@@ -1,16 +1,27 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownLeft, ArrowUpRight, Search } from "lucide-react";
 import { api } from "../api/client";
 import { formatCurrency, formatDate } from "../utils/format";
 import clsx from "clsx";
 
 export default function Transactions() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [accountId, setAccountId] = useState<number | undefined>();
   const [page, setPage] = useState(1);
 
   const { data: accounts } = useQuery({ queryKey: ["accounts"], queryFn: api.accounts.list });
+  const { data: categories } = useQuery({ queryKey: ["categories"], queryFn: api.categories.list });
+  const updateCategory = useMutation({
+    mutationFn: ({ id, categoria_id }: { id: number; categoria_id: number }) =>
+      api.transactions.update(id, { categoria_id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["forecast"] });
+    },
+  });
   const { data: transactions, isLoading } = useQuery({
     queryKey: ["transactions", accountId, search, page],
     queryFn: () =>
@@ -89,24 +100,24 @@ export default function Transactions() {
                               {t.recurrente && (
                                 <span className="text-xs text-purple-500 font-medium">Recurrente</span>
                               )}
-                              {t.origen === "paypal" && (
-                                <span className="ml-1 text-xs text-sky-500 font-medium">PayPal</span>
-                              )}
                             </div>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-gray-500">{account?.alias ?? "—"}</td>
                         <td className="px-4 py-3">
-                          {t.categoria ? (
-                            <span
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                              style={{ background: t.categoria.color ?? "#94a3b8" }}
-                            >
-                              {t.categoria.icono} {t.categoria.nombre}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-gray-400">Sin categoría</span>
-                          )}
+                          <select
+                            aria-label={`Categoría de ${t.concepto_original}`}
+                            value={t.categoria_id ?? ""}
+                            onChange={(e) => updateCategory.mutate({ id: t.id, categoria_id: Number(e.target.value) })}
+                            disabled={updateCategory.isPending && updateCategory.variables?.id === t.id}
+                            className="max-w-44 px-2 py-1 text-xs border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                          >
+                            {categories?.map((category) => (
+                              <option key={category.id} value={category.id}>
+                                {category.icono ? `${category.icono} ` : ""}{category.nombre}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className={clsx("px-4 py-3 text-right font-semibold tabular-nums", isGasto ? "text-red-600" : "text-green-600")}>
                           {isGasto ? "" : "+"}
@@ -141,16 +152,20 @@ export default function Transactions() {
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="text-xs text-gray-400">{formatDate(t.fecha)}</span>
                         {account && <span className="text-xs text-gray-400">{account.alias}</span>}
-                        {t.categoria && (
-                          <span
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                            style={{ background: t.categoria.color ?? "#94a3b8" }}
-                          >
-                            {t.categoria.icono} {t.categoria.nombre}
-                          </span>
-                        )}
+                        <select
+                          aria-label={`Categoría de ${t.concepto_original}`}
+                          value={t.categoria_id ?? ""}
+                          onChange={(e) => updateCategory.mutate({ id: t.id, categoria_id: Number(e.target.value) })}
+                          disabled={updateCategory.isPending && updateCategory.variables?.id === t.id}
+                          className="max-w-44 px-2 py-1 text-xs border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                        >
+                          {categories?.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.icono ? `${category.icono} ` : ""}{category.nombre}
+                            </option>
+                          ))}
+                        </select>
                         {t.recurrente && <span className="text-xs text-purple-500 font-medium">Recurrente</span>}
-                        {t.origen === "paypal" && <span className="text-xs text-sky-500 font-medium">PayPal</span>}
                       </div>
                     </div>
                   </div>

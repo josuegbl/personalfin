@@ -7,11 +7,9 @@ def _daily_sync():
     from app.models.account import Account
     from app.services.sync.bbva import BBVAAdapter
     from app.services.sync.eurocaja import EurocajaAdapter
-    from app.services.sync.paypal import PayPalAdapter
-    from app.services.categorization import auto_categorize_pending, mark_paypal_passthroughs
     from app.services.recurring import detect_recurring
 
-    ADAPTERS = {"BBVA": BBVAAdapter, "Eurocaja Rural": EurocajaAdapter, "PayPal": PayPalAdapter}
+    ADAPTERS = {"BBVA": BBVAAdapter, "Eurocaja Rural": EurocajaAdapter}
 
     db = SessionLocal()
     try:
@@ -26,8 +24,6 @@ def _daily_sync():
             except Exception as e:
                 print(f"[sync] Error en {account.proveedor}: {e}")
 
-        auto_categorize_pending(db)
-        mark_paypal_passthroughs(db)
         detect_recurring(db)
     finally:
         db.close()

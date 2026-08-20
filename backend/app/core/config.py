@@ -7,11 +7,6 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://bankfinances:bankfinances@localhost:5432/bankfinances"
     SECRET_KEY: str = "change_me"
 
-    # PayPal REST API (opcional — sync automático)
-    PAYPAL_CLIENT_ID: str = ""
-    PAYPAL_CLIENT_SECRET: str = ""
-    PAYPAL_MODE: str = "live"
-
     # BBVA — sync automático via Playwright
     BBVA_JGB_USER: str = ""
     BBVA_JGB_PASSWORD: str = ""

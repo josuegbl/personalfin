@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, extract, and_
+from sqlalchemy import func, extract, and_, or_
 from app.core.database import get_db
 from app.models.account import Account
 from app.models.transaction import Transaction
@@ -15,14 +15,24 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 def _monthly_summary(db: Session, year: int, month: int) -> MonthlySummary:
     q = db.query(
-        func.coalesce(func.sum(Transaction.importe).filter(Transaction.importe > 0), 0),
-        func.coalesce(func.sum(Transaction.importe).filter(Transaction.importe < 0), 0),
+        func.coalesce(
+            func.sum(Transaction.importe).filter(
+                Transaction.importe > 0
+            ),
+            0,
+        ),
+        func.coalesce(
+            func.sum(Transaction.importe).filter(
+                Transaction.importe < 0
+            ),
+            0,
+        ),
         func.count(Transaction.id),
-    ).filter(
+    ).outerjoin(Category, Transaction.categoria_id == Category.id).filter(
         and_(
             extract("year", Transaction.fecha) == year,
             extract("month", Transaction.fecha) == month,
-            Transaction.excluir_de_gastos == False,
+            or_(Category.id.is_(None), Category.incluida_en_analisis == True),  # noqa: E712
         )
     ).one()
 
@@ -43,7 +53,12 @@ def get_dashboard(db: Session = Depends(get_db)):
     today = date.today()
     year, month = today.year, today.month
 
-    accounts = db.query(Account).filter(Account.activa == True).order_by(Account.id).all()
+    accounts = (
+        db.query(Account)
+        .filter(Account.activa == True, Account.visible_dashboard == True)  # noqa: E712
+        .order_by(Account.id)
+        .all()
+    )
     saldo_total = sum(a.saldo_actual for a in accounts)
 
     saldo_por_cuenta = [
@@ -75,7 +90,7 @@ def get_dashboard(db: Session = Depends(get_db)):
                 extract("year", Transaction.fecha) == year,
                 extract("month", Transaction.fecha) == month,
                 Transaction.importe < 0,
-                Transaction.excluir_de_gastos == False,
+                or_(Category.id.is_(None), Category.incluida_en_analisis == True),  # noqa: E712
             )
         )
         .group_by(Transaction.categoria_id, Category.nombre, Category.color)

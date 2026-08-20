@@ -1,16 +1,19 @@
-import type { Account, Transaction, Category, DashboardData, UploadResult, ForecastData, ForecastPlanUpdate, RecurringExpenseCreate, RecurringExpenseOut, RecurringExpenseUpdate } from "../types";
+import type { Account, Transaction, Category, CategoryCreate, CategoryUpdate, DashboardData, UploadResult, ForecastData, ForecastPlanUpdate, RecurringExpenseCreate, RecurringExpenseOut, RecurringExpenseUpdate } from "../types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const BASE = `${API_BASE_URL}/api/v1`;
 
 async function get<T>(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
-  const url = new URL(BASE + path);
+  let urlStr = BASE + path;
   if (params) {
+    const qs = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined) url.searchParams.set(k, String(v));
+      if (v !== undefined) qs.set(k, String(v));
     });
+    const qsStr = qs.toString();
+    if (qsStr) urlStr += `?${qsStr}`;
   }
-  const res = await fetch(url.toString());
+  const res = await fetch(urlStr);
   if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
   return res.json();
 }
@@ -61,10 +64,10 @@ async function uploadFile<T>(path: string, file: File): Promise<T> {
 
 export const api = {
   dashboard: {
-    get: () => get<DashboardData>("/dashboard"),
+    get: () => get<DashboardData>("/dashboard/"),
   },
   accounts: {
-    list: () => get<Account[]>("/accounts"),
+    list: () => get<Account[]>("/accounts/"),
     get: (id: number) => get<Account>(`/accounts/${id}`),
     sync: (id: number) => post(`/sync/${id}`),
     syncAll: () => post("/sync/"),
@@ -80,12 +83,15 @@ export const api = {
       recurrente?: boolean;
       page?: number;
       page_size?: number;
-    }) => get<Transaction[]>("/transactions", params as Record<string, string | number | boolean | undefined>),
+    }) => get<Transaction[]>("/transactions/", params as Record<string, string | number | boolean | undefined>),
     update: (id: number, body: Partial<Pick<Transaction, "categoria_id" | "comercio" | "recurrente" | "notas">>) =>
       patch<Transaction>(`/transactions/${id}`, body),
   },
   categories: {
-    list: () => get<Category[]>("/categories"),
+    list: () => get<Category[]>("/categories/"),
+    create: (body: CategoryCreate) => post<Category>("/categories/", body),
+    update: (id: number, body: CategoryUpdate) => patch<Category>(`/categories/${id}`, body),
+    delete: (id: number) => del(`/categories/${id}`),
   },
   forecast: {
     get: (year: number, month: number) => get<ForecastData>(`/forecast/${year}/${month}`),

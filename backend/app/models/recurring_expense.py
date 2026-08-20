@@ -17,8 +17,10 @@ class RecurringExpense(Base):
     meses: Mapped[list[int] | None] = mapped_column(ARRAY(Integer), nullable=True)
     dia_cobro: Mapped[int | None] = mapped_column(Integer, nullable=True)
     categoria: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    subcategoria_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
 
     account: Mapped["Account | None"] = relationship()
+    subcategoria: Mapped["Category | None"] = relationship("Category")
     tiers: Mapped[list["RecurringExpenseTier"]] = relationship(
         back_populates="expense",
         cascade="all, delete-orphan",

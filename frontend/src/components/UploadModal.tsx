@@ -140,9 +140,9 @@ export default function UploadModal({ account, onClose }: Props) {
                 <p className="font-semibold text-gray-900">
                   {result!.imported} transacciones nuevas
                 </p>
-                {result!.skipped_duplicates > 0 && (
+                {result!.skipped_existing > 0 && (
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {result!.skipped_duplicates} duplicadas omitidas
+                    {result!.skipped_existing} movimientos ya existentes omitidos
                   </p>
                 )}
                 {result!.balance != null && (

@@ -28,7 +28,7 @@ export default function Dashboard() {
   if (error || !data) {
     return (
       <div className="p-8 text-red-500">
-        Error cargando el dashboard. ¿Está el backend corriendo?
+        Error cargando el dashboard: {error instanceof Error ? error.message : String(error)}
       </div>
     );
   }

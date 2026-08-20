@@ -1,4 +1,4 @@
-export type AccountType = "bank" | "paypal";
+export type AccountType = "bank";
 
 export interface Account {
   id: number;
@@ -20,6 +20,21 @@ export interface Category {
   icono: string | null;
   color: string | null;
   padre_id: number | null;
+  naturaleza: "gasto" | "ingreso" | "transferencia" | "neutral";
+  incluida_en_analisis: boolean;
+  se_puede_eliminar: boolean;
+}
+
+export interface CategoryCreate {
+  nombre: string;
+  color: string | null;
+  padre_id: number | null;
+  naturaleza: "gasto" | "ingreso" | "transferencia" | "neutral";
+  incluida_en_analisis: boolean;
+}
+
+export interface CategoryUpdate {
+  nombre: string;
 }
 
 export interface Transaction {
@@ -33,9 +48,7 @@ export interface Transaction {
   categoria: Category | null;
   subcategoria: string | null;
   recurrente: boolean;
-  origen: "bank" | "paypal";
-  paypal_transaction_id: string | null;
-  excluir_de_gastos: boolean;
+  origen: "bank";
   notas: string | null;
   hash: string;
   created_at: string;
@@ -77,9 +90,8 @@ export interface DashboardData {
 export interface UploadResult {
   imported: number;
   total_in_file: number;
-  skipped_duplicates: number;
+  skipped_existing: number;
   balance: number;
-  paypal_passthroughs_marked: number;
 }
 
 export interface RecurringExpenseTierIn {
@@ -93,17 +105,21 @@ export interface RecurringExpenseTierOut {
 }
 
 export interface RecurringExpenseCreate {
+  categoria: string;
   concepto: string;
   tiers: RecurringExpenseTierIn[];
 }
 
 export interface RecurringExpenseUpdate {
+  categoria: string;
   concepto: string;
   tiers: RecurringExpenseTierIn[];
 }
 
 export interface RecurringExpenseOut {
   id: number;
+  categoria: string | null;
+  subcategoria_id: number | null;
   concepto: string;
   tipo: string;
   tiers: RecurringExpenseTierOut[];
@@ -111,11 +127,17 @@ export interface RecurringExpenseOut {
 
 export interface ForecastCategoryItem {
   id?: number;           // Present for gastos_fijos (RecurringExpense.id)
+  categoria?: string | null;
   nombre: string;
   importe_planificado: number;
   importe_real: number;
   meses?: number[] | null; // Present for gastos_fijos; null = every month
   tiers?: RecurringExpenseTierOut[];
+}
+
+export interface FixedCategoryGroup {
+  categoria: string;
+  subcategorias: ForecastCategoryItem[];
 }
 
 export interface ForecastCategoryInput {
@@ -124,26 +146,34 @@ export interface ForecastCategoryInput {
 }
 
 export interface ForecastPlanUpdate {
+  cuenta_personal_josue: number;
+  cuenta_personal_adi: number;
+  ingresos_planificados?: number | null;
   ingresos_josue: number;
   ingresos_adi: number;
-  ingresos_extra: number;
   categorias: ForecastCategoryInput[];
 }
 
 export interface ForecastData {
   anio: number;
   mes: number;
+  es_ejecucion: boolean;
+  cuenta_personal_josue: number;
+  cuenta_personal_adi: number;
+  ingresos_planificados: number | null;
   ingresos_josue: number;
   ingresos_adi: number;
-  ingresos_extra: number;
+  ingresos_nomina: number;
+  ingresos_otros: number;
+  ingresos_reales: number;
   gastos_fijos: ForecastCategoryItem[];
+  gastos_fijos_por_categoria: FixedCategoryGroup[];
   gastos_variables: ForecastCategoryItem[];
   gastos_reales_por_categoria: ForecastCategoryItem[];
-  total_ingresos_plan: number;
+  total_cuentas_personales_plan: number;
   total_gastos_fijos_plan: number;
   total_gastos_variables_plan: number;
   ahorro_estimado: number;
-  ingresos_reales: number;
   total_gastos_reales: number;
   ahorro_real: number;
 }

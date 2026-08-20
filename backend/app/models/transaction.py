@@ -8,12 +8,6 @@ from app.core.database import Base
 
 class TransactionOrigin(str, enum.Enum):
     bank = "bank"
-    paypal = "paypal"
-
-
-class TransferEstado(str, enum.Enum):
-    completo = "completo"
-    pendiente = "pendiente"
 
 
 class Transaction(Base):
@@ -29,11 +23,6 @@ class Transaction(Base):
     subcategoria: Mapped[str | None] = mapped_column(String(100), nullable=True)
     recurrente: Mapped[bool] = mapped_column(Boolean, default=False)
     origen: Mapped[TransactionOrigin] = mapped_column(Enum(TransactionOrigin), default=TransactionOrigin.bank)
-    paypal_transaction_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
-    # Internal transfer deduplication
-    transfer_pair_id: Mapped[int | None] = mapped_column(ForeignKey("transactions.id"), nullable=True, index=True)
-    transfer_estado: Mapped[TransferEstado | None] = mapped_column(Enum(TransferEstado), nullable=True)
-    excluir_de_gastos: Mapped[bool] = mapped_column(Boolean, default=False)
     es_compartido: Mapped[bool] = mapped_column(Boolean, default=False)
     hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -41,4 +30,3 @@ class Transaction(Base):
 
     account: Mapped["Account"] = relationship(back_populates="transactions")
     categoria: Mapped["Category | None"] = relationship(back_populates="transactions")
-    transfer_par: Mapped["Transaction | None"] = relationship("Transaction", foreign_keys=[transfer_pair_id], remote_side="Transaction.id")

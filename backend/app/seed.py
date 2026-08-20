@@ -5,6 +5,7 @@ Uso: python -m app.seed
 from decimal import Decimal
 
 from app.core.database import SessionLocal
+from app.core.forecast_catalog import FIXED_CATEGORY_NAMES, SUBSCRIPTION_DEFAULT_CONCEPTS, normalize_fixed_category_name
 from app.models.category import Category
 from app.models.recurring_expense import RecurringExpense, RecurringExpenseTier
 
@@ -21,11 +22,16 @@ CATEGORIES = [
     {"nombre": "Educación",              "icono": "📚", "color": "#3b82f6"},
     {"nombre": "Seguros",                "icono": "🛡️", "color": "#0ea5e9"},
     {"nombre": "Impuestos",              "icono": "🏛️", "color": "#64748b"},
-    {"nombre": "Nómina",                 "icono": "💰", "color": "#10b981"},
-    {"nombre": "Transferencias internas","icono": "↔️", "color": "#94a3b8"},
+    {"nombre": "Nómina",                 "icono": "💰", "color": "#10b981", "naturaleza": "ingreso"},
+    {"nombre": "Transferencias",         "icono": "↔️", "color": "#94a3b8", "naturaleza": "transferencia", "incluida_en_analisis": True},
+    {"nombre": "Transferencias Internas", "icono": "↔️", "color": "#94a3b8", "naturaleza": "transferencia", "incluida_en_analisis": True},
+    {"nombre": "Sin categoría",         "icono": "?",  "color": "#94a3b8", "naturaleza": "neutral", "incluida_en_analisis": True},
     {"nombre": "Suscripciones",          "icono": "📱", "color": "#8b5cf6"},
-    {"nombre": "PayPal",                 "icono": "💳", "color": "#1d4ed8"},
     {"nombre": "Préstamos",              "icono": "🏦", "color": "#dc2626"},
+    {"nombre": "Tarjeta Credito",        "icono": "💳", "color": "#dc2626"},
+    {"nombre": "Remesas",                "icono": "💸", "color": "#2563eb"},
+    {"nombre": "Colegios",               "icono": "🏫", "color": "#0ea5e9"},
+    {"nombre": "Deportes",               "icono": "⚽", "color": "#16a34a"},
     {"nombre": "Otros",                  "icono": "📦", "color": "#9ca3af"},
 ]
 
@@ -231,6 +237,77 @@ def seed():
 
         db.commit()
         print("Seed completado.")
+    finally:
+        db.close()
+
+
+def ensure_forecast_catalog() -> None:
+    """Guarantee fixed forecast categories and base subscription concepts exist.
+
+    This runs on every startup and is idempotent.
+    """
+    db = SessionLocal()
+    try:
+        parent_categories: dict[str, Category] = {}
+
+        for category_name in FIXED_CATEGORY_NAMES:
+            normalized = normalize_fixed_category_name(category_name)
+            category = db.query(Category).filter(Category.nombre == normalized).first()
+            if category is None:
+                category = Category(
+                    nombre=normalized,
+                    icono="📁",
+                    color="#6b7280",
+                    naturaleza="gasto",
+                    incluida_en_analisis=True,
+                )
+                db.add(category)
+                db.flush()
+            category.padre_id = None
+            parent_categories[normalized] = category
+
+        subscriptions_parent = parent_categories.get("Suscripciones")
+        if subscriptions_parent is not None:
+            for concept in SUBSCRIPTION_DEFAULT_CONCEPTS:
+                subcategory = (
+                    db.query(Category)
+                    .filter(Category.nombre == concept, Category.padre_id == subscriptions_parent.id)
+                    .first()
+                )
+                if subcategory is None:
+                    subcategory = db.query(Category).filter(Category.nombre == concept).first()
+                    if subcategory is None:
+                        subcategory = Category(
+                            nombre=concept,
+                            icono="🏷️",
+                            color="#9ca3af",
+                            naturaleza="gasto",
+                            incluida_en_analisis=True,
+                            padre_id=subscriptions_parent.id,
+                        )
+                        db.add(subcategory)
+                        db.flush()
+                    else:
+                        subcategory.padre_id = subscriptions_parent.id
+
+                recurring = (
+                    db.query(RecurringExpense)
+                    .filter(RecurringExpense.concepto == concept)
+                    .first()
+                )
+                if recurring is None:
+                    recurring = RecurringExpense(
+                        concepto=concept,
+                        categoria="Suscripciones",
+                        subcategoria_id=subcategory.id,
+                        importe=Decimal("0"),
+                        tipo="fijo",
+                    )
+                    db.add(recurring)
+                    db.flush()
+                    db.add(RecurringExpenseTier(expense_id=recurring.id, importe=Decimal("0"), meses=None))
+
+        db.commit()
     finally:
         db.close()
 

@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Plus, Trash2, Save, TrendingUp, Pencil } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, Save, TrendingUp, Pencil } from "lucide-react";
 import clsx from "clsx";
 import { api } from "../api/client";
-import { formatCurrency } from "../utils/format";
-import type { ForecastData } from "../types";
+import { formatCurrency, formatLocaleNumberInput, parseLocaleNumberInput } from "../utils/format";
+import type { Category, ForecastData } from "../types";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -39,12 +39,47 @@ const MONTH_ABBREVS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "
 
 type TierDraft = { importe: string; meses: number[] | null };
 type CatDraft = { nombre: string; importe_planificado: string };
-type FixedDraft = { id: number; nombre: string; tiers: TierDraft[] };
+
+type FixedDraft = { id: number; categoria: string; nombre: string; tiers: TierDraft[] };
 type EditDraft = { concepto: string; tiers: TierDraft[] };
 
 function parseAmount(s: string): number {
-  const n = parseFloat(s.replace(",", "."));
-  return isNaN(n) ? 0 : n;
+  return parseLocaleNumberInput(s);
+}
+
+function formatAmountEsInput(value: string): string {
+  return formatLocaleNumberInput(value);
+}
+
+type MoneyInputProps = {
+  value: string;
+  onValueChange: (value: string) => void;
+  placeholder?: string;
+  autoFocus?: boolean;
+  className?: string;
+};
+
+function MoneyInput({ value, onValueChange, placeholder, autoFocus, className }: MoneyInputProps) {
+  return (
+    <div className={clsx("relative", className)}>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={value}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        onChange={(event) => onValueChange(event.target.value)}
+        onBlur={(event) => onValueChange(formatAmountEsInput(event.target.value))}
+        className="w-full pl-3 pr-10 py-1.5 text-sm text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums bg-white"
+      />
+      <span
+        aria-hidden="true"
+        className="absolute inset-y-0 right-0 flex items-center px-2 text-gray-500 text-xs pointer-events-none select-none border-l border-gray-200 bg-gray-50 rounded-r-lg"
+      >
+        €
+      </span>
+    </div>
+  );
 }
 
 function getTierForMonth(tiers: TierDraft[], month: number): TierDraft | null {
@@ -62,27 +97,38 @@ interface PlanTabProps {
 
 function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
   const qc = useQueryClient();
+  const { data: allCategories } = useQuery({
+    queryKey: ["categories"],
+    queryFn: api.categories.list,
+  });
   const [ingresosJosue, setIngresosJosue] = useState(String(data.ingresos_josue));
   const [ingresosAdi, setIngresosAdi] = useState(String(data.ingresos_adi));
-  const [ingresosExtra, setIngresosExtra] = useState(String(data.ingresos_extra));
+  const [personalJosue, setPersonalJosue] = useState(String(data.cuenta_personal_josue));
+  const [personalAdi, setPersonalAdi] = useState(String(data.cuenta_personal_adi));
   const [categorias, setCategorias] = useState<CatDraft[]>(
     data.gastos_variables.map((g) => ({ nombre: g.nombre, importe_planificado: String(g.importe_planificado) }))
   );
   const [fijos, setFijos] = useState<FixedDraft[]>(
-    data.gastos_fijos
-      .filter((g) => g.id !== undefined)
-      .map((g) => ({
-        id: g.id!,
-        nombre: g.nombre,
-        tiers: (g.tiers ?? []).map(t => ({ importe: String(t.importe), meses: t.meses ?? null })),
-      }))
+    data.gastos_fijos_por_categoria.flatMap((group) =>
+      group.subcategorias
+        .filter((g) => g.id !== undefined)
+        .map((g) => ({
+          id: g.id!,
+          categoria: group.categoria,
+          nombre: g.nombre,
+          tiers: (g.tiers ?? []).map((t) => ({ importe: String(t.importe), meses: t.meses ?? null })),
+        }))
+    )
   );
   const [saving, setSaving] = useState(false);
-  const [newCatName, setNewCatName] = useState("");
   const [showNewFijo, setShowNewFijo] = useState(false);
-  const [newFijoConcepto, setNewFijoConcepto] = useState("");
+  const [newFijoCategoria, setNewFijoCategoria] = useState("");
+  const [newFijoSubcategoria, setNewFijoSubcategoria] = useState("");
   const [newFijoTiers, setNewFijoTiers] = useState<TierDraft[]>([{ importe: "", meses: null }]);
   const [addingFijo, setAddingFijo] = useState(false);
+  const [showNewVariable, setShowNewVariable] = useState(false);
+  const [newVariableCategoria, setNewVariableCategoria] = useState("");
+  const [newVariableAmount, setNewVariableAmount] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [editingFijoId, setEditingFijoId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft>({ concepto: "", tiers: [] });
@@ -91,43 +137,85 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
   useEffect(() => {
     setIngresosJosue(String(data.ingresos_josue));
     setIngresosAdi(String(data.ingresos_adi));
-    setIngresosExtra(String(data.ingresos_extra));
-    setCategorias(
-      data.gastos_variables.map((g) => ({ nombre: g.nombre, importe_planificado: String(g.importe_planificado) }))
-    );
-    setFijos(
-      data.gastos_fijos
+    setPersonalJosue(String(data.cuenta_personal_josue));
+    setPersonalAdi(String(data.cuenta_personal_adi));
+    setCategorias(data.gastos_variables.map((g) => ({ nombre: g.nombre, importe_planificado: String(g.importe_planificado) })));
+    setFijos(data.gastos_fijos_por_categoria.flatMap((group) =>
+      group.subcategorias
         .filter((g) => g.id !== undefined)
         .map((g) => ({
           id: g.id!,
+          categoria: group.categoria,
           nombre: g.nombre,
-          tiers: (g.tiers ?? []).map(t => ({ importe: String(t.importe), meses: t.meses ?? null })),
+          tiers: (g.tiers ?? []).map((t) => ({ importe: String(t.importe), meses: t.meses ?? null })),
         }))
-    );
+    ));
     setEditingFijoId(null);
-  }, [data]);
+    setNewFijoCategoria(parentCategoryOptions[0] ?? "");
+    setShowNewVariable(false);
+    setNewVariableCategoria(parentCategoryOptions[0] ?? "");
+    setNewVariableAmount("");
+  }, [data, year, month]);
 
-  const totalIngresos = parseAmount(ingresosJosue) + parseAmount(ingresosAdi) + parseAmount(ingresosExtra);
+  const totalPersonal = parseAmount(personalJosue) + parseAmount(personalAdi);
+  const ingresosNomina = parseAmount(ingresosJosue) + parseAmount(ingresosAdi);
   const totalFijos = fijos.reduce((s, f) => {
     const tier = getTierForMonth(f.tiers, month);
     return s + (tier ? parseAmount(tier.importe) : 0);
   }, 0);
   const totalVariables = categorias.reduce((s, c) => s + parseAmount(c.importe_planificado), 0);
-  const ahorro = totalIngresos - totalFijos - totalVariables;
+  const ahorro = ingresosNomina - totalPersonal - totalFijos - totalVariables;
+  const fixedCategoriesForMonth = Array.from(new Set(
+    fijos.map((expense) => expense.categoria)
+  )).sort((first, second) => first.localeCompare(second, "es"));
+  const parentCategories = allCategories
+    ?.filter((category) => category.padre_id === null)
+    .sort((first, second) => first.nombre.localeCompare(second.nombre, "es")) ?? [];
+  const parentCategoryOptions = parentCategories.map((category) => category.nombre);
+
+  function subcategoriesFor(parentName: string): Category[] {
+    const parent = parentCategories.find((category) => category.nombre === parentName);
+    if (!parent) return [];
+    return allCategories
+      ?.filter((category) => category.padre_id === parent.id)
+      .sort((first, second) => first.nombre.localeCompare(second.nombre, "es")) ?? [];
+  }
+
+  const newFijoSubcategoryOptions = subcategoriesFor(newFijoCategoria);
+
+  useEffect(() => {
+    const defaultCategory = parentCategoryOptions[0] ?? "";
+    if (!parentCategoryOptions.includes(newFijoCategoria)) {
+      setNewFijoCategoria(defaultCategory);
+    }
+    const subcategories = subcategoriesFor(newFijoCategoria || defaultCategory);
+    if (!subcategories.some((category) => category.nombre === newFijoSubcategoria)) {
+      setNewFijoSubcategoria(subcategories[0]?.nombre ?? "");
+    }
+    if (!parentCategoryOptions.includes(newVariableCategoria)) {
+      setNewVariableCategoria(defaultCategory);
+    }
+  }, [allCategories, newFijoCategoria, newFijoSubcategoria]);
+
 
   function updateCatAmount(index: number, value: string) {
     setCategorias((prev) => prev.map((c, i) => (i === index ? { ...c, importe_planificado: value } : c)));
   }
 
-  function removeCat(index: number) {
-    setCategorias((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function addCat() {
-    const name = newCatName.trim();
-    if (!name) return;
-    setCategorias((prev) => [...prev, { nombre: name, importe_planificado: "0" }]);
-    setNewCatName("");
+  function handleAddVariableCategory() {
+    const category = newVariableCategoria.trim();
+    if (!category) return;
+    const amount = String(parseAmount(newVariableAmount));
+    setCategorias((prev) => {
+      const existingIdx = prev.findIndex((c) => c.nombre === category);
+      if (existingIdx >= 0) {
+        return prev.map((c, i) => (i === existingIdx ? { ...c, importe_planificado: amount } : c));
+      }
+      return [...prev, { nombre: category, importe_planificado: amount }];
+    });
+    setShowNewVariable(false);
+    setNewVariableCategoria(parentCategoryOptions[0] ?? "");
+    setNewVariableAmount("");
   }
 
   async function handleDeleteFijo(id: number) {
@@ -202,9 +290,12 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
 
   async function handleSaveEditFijo() {
     if (editingFijoId === null) return;
+    const current = fijos.find((f) => f.id === editingFijoId);
+    if (!current) return;
     setSavingEdit(true);
     try {
       const updated = await api.recurringExpenses.update(editingFijoId, {
+        categoria: current.categoria,
         concepto: editDraft.concepto.trim(),
         tiers: editDraft.tiers.map(t => ({ importe: parseAmount(t.importe), meses: t.meses })),
       });
@@ -213,6 +304,7 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
           .map(f => f.id === editingFijoId
             ? {
                 ...f,
+                categoria: updated.categoria ?? f.categoria,
                 nombre: updated.concepto,
                 tiers: updated.tiers.map(t => ({ importe: String(t.importe), meses: t.meses ?? null })),
               }
@@ -230,19 +322,23 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
   }
 
   async function handleAddFijo() {
-    const concepto = newFijoConcepto.trim();
-    if (!concepto) return;
+    if (!newFijoCategoria || !newFijoSubcategoria) return;
     setAddingFijo(true);
     try {
       const created = await api.recurringExpenses.create({
-        concepto,
+        categoria: newFijoCategoria,
+        concepto: newFijoSubcategoria,
         tiers: newFijoTiers.map(t => ({ importe: parseAmount(t.importe), meses: t.meses })),
       });
       const tierDrafts = created.tiers.map(t => ({ importe: String(t.importe), meses: t.meses ?? null }));
-      if (getTierForMonth(tierDrafts, month) !== null) {
-        setFijos(prev => [...prev, { id: created.id, nombre: created.concepto, tiers: tierDrafts }]);
-      }
-      setNewFijoConcepto("");
+      setFijos(prev => [...prev, {
+        id: created.id,
+        categoria: created.categoria ?? newFijoCategoria,
+        nombre: created.concepto,
+        tiers: tierDrafts,
+      }]);
+      setNewFijoCategoria(parentCategoryOptions[0] ?? "");
+      setNewFijoSubcategoria("");
       setNewFijoTiers([{ importe: "", meses: null }]);
       setShowNewFijo(false);
     } finally {
@@ -254,9 +350,10 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
     setSaving(true);
     try {
       await api.forecast.save(year, month, {
+        cuenta_personal_josue: parseAmount(personalJosue),
+        cuenta_personal_adi: parseAmount(personalAdi),
         ingresos_josue: parseAmount(ingresosJosue),
         ingresos_adi: parseAmount(ingresosAdi),
-        ingresos_extra: parseAmount(ingresosExtra),
         categorias: categorias.map((c) => ({ nombre: c.nombre, importe_planificado: parseAmount(c.importe_planificado) })),
       });
       qc.invalidateQueries({ queryKey: ["forecast", year, month] });
@@ -268,43 +365,48 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
 
   return (
     <div className="space-y-5">
-      {/* Revenues */}
+      {/* Ingresos — editable per person */}
       <Card>
         <SectionHeader title="Ingresos" />
         <div className="space-y-2">
           {[
             { label: "Josué", value: ingresosJosue, setter: setIngresosJosue },
             { label: "Adi", value: ingresosAdi, setter: setIngresosAdi },
-            { label: "Extra", value: ingresosExtra, setter: setIngresosExtra },
           ].map(({ label, value, setter }) => (
             <div key={label} className="flex items-center justify-between gap-4">
               <span className="text-sm text-gray-700 w-20">{label}</span>
-              <div className="relative flex-1 max-w-48">
-                <input
-                  type="number"
-                  value={value}
-                  onChange={(e) => setter(e.target.value)}
-                  onBlur={(e) => setter(String(parseAmount(e.target.value)))}
-                  className="w-full px-3 py-1.5 text-sm text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"
-                  step="0.01"
-                  min="0"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">€</span>
-              </div>
+              <MoneyInput value={value} onValueChange={setter} className="flex-1 max-w-48" />
             </div>
           ))}
-          <div className="flex items-center justify-between pt-2 border-t border-gray-100 mt-2">
-            <span className="text-sm font-semibold text-gray-900">Total ingresos</span>
-            <span className="text-sm font-bold text-green-600 tabular-nums">{formatCurrency(totalIngresos)}</span>
-          </div>
+        </div>
+      </Card>
+
+      {/* Ingresos personales — editable */}
+      <Card>
+        <SectionHeader title="Ingresos personales" />
+        <div className="space-y-2">
+          {[
+            { label: "Josué", value: personalJosue, setter: setPersonalJosue },
+            { label: "Adi", value: personalAdi, setter: setPersonalAdi },
+          ].map(({ label, value, setter }) => (
+            <div key={label} className="flex items-center justify-between gap-4">
+              <span className="text-sm text-gray-700 w-20">{label}</span>
+              <MoneyInput value={value} onValueChange={setter} className="flex-1 max-w-48" />
+            </div>
+          ))}
         </div>
       </Card>
 
       {/* Fixed expenses */}
       <Card>
         <SectionHeader title={`Gastos fijos del mes (${fijos.length})`} />
-        <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
-          {fijos.map((item) => {
+        <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
+          {fixedCategoriesForMonth.map((categoryName) => {
+            const items = fijos.filter((expense) => expense.categoria === categoryName);
+            return (
+              <div key={categoryName} className="rounded-lg border border-gray-100 p-3">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{categoryName}</h4>
+                {items.map((item) => {
             const currentTier = getTierForMonth(item.tiers, month);
             return (
               <div key={item.id}>
@@ -366,14 +468,15 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
                 {/* Inline edit panel */}
                 {editingFijoId === item.id && (
                   <div className="mb-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3 space-y-3">
-                    {/* Concepto */}
-                    <input
-                      type="text"
+                    <select
                       value={editDraft.concepto}
                       onChange={(e) => setEditDraft((p) => ({ ...p, concepto: e.target.value }))}
                       className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                      placeholder="Concepto"
-                    />
+                    >
+                      {subcategoriesFor(item.categoria).map((subcategory) => (
+                        <option key={subcategory.id} value={subcategory.nombre}>{subcategory.nombre}</option>
+                      ))}
+                    </select>
 
                     {/* Tier list */}
                     {editDraft.tiers.map((tier, ti) => (
@@ -388,18 +491,11 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
                           <span className="text-xs text-gray-500 font-medium shrink-0">
                             {editDraft.tiers.length > 1 ? `Tramo ${ti + 1}` : "Importe"}
                           </span>
-                          <div className="relative flex-1">
-                            <input
-                              type="number"
-                              value={tier.importe}
-                              onChange={(e) => updateEditTierImporte(ti, e.target.value)}
-                              onBlur={(e) => updateEditTierImporte(ti, String(parseAmount(e.target.value)))}
-                              className="w-full px-3 py-1.5 text-sm text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums bg-white"
-                              step="0.01"
-                              min="0"
-                            />
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">€</span>
-                          </div>
+                          <MoneyInput
+                            value={tier.importe}
+                            onValueChange={(value) => updateEditTierImporte(ti, value)}
+                            className="flex-1"
+                          />
                           {editDraft.tiers.length > 1 && (
                             <button
                               onClick={() => removeEditTier(ti)}
@@ -486,18 +582,40 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
               </div>
             );
           })}
+              </div>
+            );
+          })}
         </div>
 
         {/* Add fixed expense form */}
         {showNewFijo ? (
           <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
-            <input
-              type="text"
-              placeholder="Concepto (ej. Netflix)"
-              value={newFijoConcepto}
-              onChange={(e) => setNewFijoConcepto(e.target.value)}
+            <select
+              value={newFijoCategoria}
+              onChange={(e) => {
+                const category = e.target.value;
+                setNewFijoCategoria(category);
+                setNewFijoSubcategoria(subcategoriesFor(category)[0]?.nombre ?? "");
+              }}
               className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            >
+              {parentCategoryOptions.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+
+            <select
+              value={newFijoSubcategoria}
+              onChange={(e) => setNewFijoSubcategoria(e.target.value)}
+              disabled={newFijoSubcategoryOptions.length === 0}
+              className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+            >
+              {newFijoSubcategoryOptions.length === 0 ? (
+                <option>Sin subcategorías disponibles</option>
+              ) : newFijoSubcategoryOptions.map((subcategory) => (
+                <option key={subcategory.id} value={subcategory.nombre}>{subcategory.nombre}</option>
+              ))}
+            </select>
 
             {/* Tier list */}
             {newFijoTiers.map((tier, ti) => (
@@ -512,18 +630,12 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
                   <span className="text-xs text-gray-500 font-medium shrink-0">
                     {newFijoTiers.length > 1 ? `Tramo ${ti + 1}` : "Importe"}
                   </span>
-                  <div className="relative flex-1">
-                    <input
-                      type="number"
-                      placeholder="0"
-                      value={tier.importe}
-                      onChange={(e) => updateNewFijoTierImporte(ti, e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"
-                      step="0.01"
-                      min="0"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">€</span>
-                  </div>
+                  <MoneyInput
+                    value={tier.importe}
+                    onValueChange={(value) => updateNewFijoTierImporte(ti, value)}
+                    placeholder="0"
+                    className="flex-1"
+                  />
                   {newFijoTiers.length > 1 && (
                     <button
                       onClick={() => removeNewFijoTier(ti)}
@@ -594,7 +706,8 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
               <button
                 onClick={() => {
                   setShowNewFijo(false);
-                  setNewFijoConcepto("");
+                  setNewFijoCategoria(parentCategoryOptions[0] ?? "");
+                  setNewFijoSubcategoria("");
                   setNewFijoTiers([{ importe: "", meses: null }]);
                 }}
                 className="px-3 py-1.5 text-sm rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
@@ -603,7 +716,7 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
               </button>
               <button
                 onClick={handleAddFijo}
-                disabled={!newFijoConcepto.trim() || addingFijo}
+                disabled={!newFijoCategoria || !newFijoSubcategoria || addingFijo}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors"
               >
                 <Plus size={14} />
@@ -629,52 +742,73 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
 
       {/* Variable budgets */}
       <Card>
-        <SectionHeader title="Gastos variables (presupuesto)" />
+        <SectionHeader title="Gastos variables" />
         <div className="space-y-2">
           {categorias.map((cat, index) => (
             <div key={index} className="flex items-center gap-2">
               <span className="text-sm text-gray-700 flex-1 truncate">{cat.nombre}</span>
-              <div className="relative w-36">
-                <input
-                  type="number"
-                  value={cat.importe_planificado}
-                  onChange={(e) => updateCatAmount(index, e.target.value)}
-                  onBlur={(e) => updateCatAmount(index, String(parseAmount(e.target.value)))}
-                  className="w-full px-3 py-1.5 text-sm text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"
-                  step="0.01"
-                  min="0"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">€</span>
-              </div>
-              <button
-                onClick={() => removeCat(index)}
-                className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
-              >
-                <Trash2 size={14} />
-              </button>
+              <MoneyInput
+                value={cat.importe_planificado}
+                onValueChange={(value) => updateCatAmount(index, value)}
+                className="w-36"
+              />
             </div>
           ))}
         </div>
 
-        {/* Add category */}
-        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-          <input
-            type="text"
-            placeholder="Nueva categoría..."
-            value={newCatName}
-            onChange={(e) => setNewCatName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addCat()}
-            className="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+        {showNewVariable ? (
+          <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+            <select
+              value={newVariableCategoria}
+              onChange={(e) => setNewVariableCategoria(e.target.value)}
+              className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {parentCategories.map((category) => (
+                <optgroup key={category.id} label={category.nombre}>
+                  <option value={category.nombre}>{category.nombre}</option>
+                  {subcategoriesFor(category.nombre).map((subcategory) => (
+                    <option key={subcategory.id} value={subcategory.nombre}>{subcategory.nombre}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <MoneyInput
+              value={newVariableAmount}
+              onValueChange={setNewVariableAmount}
+              placeholder="0"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setShowNewVariable(false);
+                  setNewVariableCategoria(parentCategoryOptions[0] ?? "");
+                  setNewVariableAmount("");
+                }}
+                className="px-3 py-1.5 text-sm rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAddVariableCategory}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              >
+                <Plus size={14} />
+                Añadir
+              </button>
+            </div>
+          </div>
+        ) : (
           <button
-            onClick={addCat}
-            disabled={!newCatName.trim()}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-40 transition-colors"
+            onClick={() => {
+              setShowNewVariable(true);
+              setEditingFijoId(null);
+            }}
+            className="mt-3 pt-3 border-t border-gray-100 w-full flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 transition-colors"
           >
-            <Plus size={14} />
-            Añadir
+            <Plus size={13} />
+            Añadir gasto variable
           </button>
-        </div>
+        )}
 
         <div className="flex items-center justify-between pt-3 border-t border-gray-100 mt-3">
           <span className="text-sm font-semibold text-gray-900">Total variables</span>
@@ -687,8 +821,12 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
         <SectionHeader title="Resumen planificado" />
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-gray-600">Ingresos totales</span>
-            <span className="font-medium text-green-600 tabular-nums">{formatCurrency(totalIngresos)}</span>
+            <span className="text-gray-600">Nóminas</span>
+            <span className="font-medium text-green-600 tabular-nums">{formatCurrency(ingresosNomina)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Ingresos personales</span>
+            <span className="font-medium text-gray-800 tabular-nums">− {formatCurrency(totalPersonal)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Gastos fijos</span>
@@ -725,9 +863,11 @@ interface ExecRowProps {
   real: number;
   colorScheme?: "income" | "expense" | "saving";
   bold?: boolean;
+  expanded?: boolean;
+  onToggle?: () => void;
 }
 
-function ExecRow({ label, plan, real, colorScheme = "expense", bold = false }: ExecRowProps) {
+function ExecRow({ label, plan, real, colorScheme = "expense", bold = false, expanded = false, onToggle }: ExecRowProps) {
   const diff = real - plan;
   const isGood = colorScheme === "income" || colorScheme === "saving" ? diff >= 0 : diff <= 0;
   const diffColor = diff === 0 ? "text-gray-400" : isGood ? "text-green-600" : "text-red-500";
@@ -735,7 +875,12 @@ function ExecRow({ label, plan, real, colorScheme = "expense", bold = false }: E
   return (
     <tr className={clsx("border-b border-gray-50", bold && "bg-gray-50")}>
       <td className={clsx("py-2.5 px-4 text-sm", bold ? "font-semibold text-gray-900" : "text-gray-700")}>
-        {label}
+        {onToggle ? (
+          <button onClick={onToggle} className="flex items-center gap-1.5 hover:text-blue-600">
+            <ChevronDown size={15} className={clsx("transition-transform", !expanded && "-rotate-90")} />
+            {label}
+          </button>
+        ) : label}
       </td>
       <td className="py-2.5 px-4 text-sm text-right tabular-nums text-gray-800 hidden sm:table-cell">
         {formatCurrency(plan)}
@@ -750,29 +895,44 @@ function ExecRow({ label, plan, real, colorScheme = "expense", bold = false }: E
   );
 }
 
+interface ExecDetailRowProps {
+  label: string;
+  plan?: number;
+  real?: number;
+}
+
+function ExecDetailRow({ label, plan, real }: ExecDetailRowProps) {
+  return (
+    <tr className="border-b border-gray-50 bg-gray-50/70">
+      <td className="py-2 px-4 pl-10 text-sm text-gray-600">{label}</td>
+      <td className="py-2 px-4 text-right text-sm tabular-nums text-gray-700 hidden sm:table-cell">
+        {plan === undefined ? "" : formatCurrency(plan)}
+      </td>
+      <td className="py-2 px-4 text-right text-sm tabular-nums text-gray-700">
+        {real === undefined ? "" : formatCurrency(real)}
+      </td>
+      <td className="py-2 px-4" />
+    </tr>
+  );
+}
+
 interface ExecTabProps {
   data: ForecastData;
 }
 
 function ExecTab({ data }: ExecTabProps) {
-  const [showCatDetail, setShowCatDetail] = useState(false);
+  const [showIncomeDetail, setShowIncomeDetail] = useState(false);
+  const [showFixedDetail, setShowFixedDetail] = useState(false);
+  const [showVariableDetail, setShowVariableDetail] = useState(false);
 
-  const totalGastosPlan = data.total_gastos_fijos_plan + data.total_gastos_variables_plan;
-
-  const realCategoryMap = new Map(
-    data.gastos_reales_por_categoria.map((c) => [c.nombre, c.importe_real])
+  const totalGastosPlan = (
+    data.total_cuentas_personales_plan
+    + data.total_gastos_fijos_plan
+    + data.total_gastos_variables_plan
   );
+  const gastosTransaccionesReales = data.total_gastos_reales - data.total_cuentas_personales_plan;
 
-  const varCategoriesWithReal = data.gastos_variables.map((v) => ({
-    nombre: v.nombre,
-    plan: v.importe_planificado,
-    real: realCategoryMap.get(v.nombre) ?? 0,
-  }));
-
-  const unplannedCategories = data.gastos_reales_por_categoria.filter(
-    (c) => !data.gastos_variables.some((v) => v.nombre === c.nombre)
-  );
-
+  const fixedExpenses = data.gastos_fijos.filter((expense) => expense.importe_planificado > 0);
   return (
     <div className="space-y-5">
       {/* Summary table */}
@@ -799,22 +959,71 @@ function ExecTab({ data }: ExecTabProps) {
             <tbody>
               <ExecRow
                 label="Ingresos"
-                plan={data.total_ingresos_plan}
+                plan={data.ingresos_josue + data.ingresos_adi}
                 real={data.ingresos_reales}
                 colorScheme="income"
+                expanded={showIncomeDetail}
+                onToggle={() => setShowIncomeDetail((visible) => !visible)}
+              />
+              {showIncomeDetail && (
+                <>
+                  <ExecDetailRow
+                    label="Nóminas"
+                    plan={data.ingresos_josue + data.ingresos_adi}
+                    real={data.ingresos_nomina}
+                  />
+                  {data.ingresos_otros !== 0 && (
+                    <ExecDetailRow
+                      label="Ingresos extraordinarios"
+                      real={data.ingresos_otros}
+                    />
+                  )}
+                </>
+              )}
+              <ExecRow
+                label="Asignaciones personales"
+                plan={data.total_cuentas_personales_plan}
+                real={data.total_cuentas_personales_plan}
+                colorScheme="expense"
               />
               <ExecRow
                 label="Gastos fijos"
                 plan={data.total_gastos_fijos_plan}
                 real={0}
                 colorScheme="expense"
+                expanded={showFixedDetail}
+                onToggle={() => setShowFixedDetail((visible) => !visible)}
               />
+              {showFixedDetail && (
+                fixedExpenses.length > 0 ? fixedExpenses.map((expense) => (
+                  <ExecDetailRow
+                    key={expense.id ?? `${expense.categoria}-${expense.nombre}`}
+                    label={expense.nombre}
+                    plan={expense.importe_planificado}
+                  />
+                )) : (
+                  <ExecDetailRow label="Sin gastos fijos planificados" />
+                )
+              )}
               <ExecRow
                 label="Gastos variables"
                 plan={data.total_gastos_variables_plan}
-                real={data.total_gastos_reales}
+                real={gastosTransaccionesReales}
                 colorScheme="expense"
+                expanded={showVariableDetail}
+                onToggle={() => setShowVariableDetail((visible) => !visible)}
               />
+              {showVariableDetail && (
+                data.gastos_reales_por_categoria.length > 0 ? data.gastos_reales_por_categoria.map((category) => (
+                  <ExecDetailRow
+                    key={category.nombre}
+                    label={category.nombre}
+                    real={category.importe_real}
+                  />
+                )) : (
+                  <ExecDetailRow label="Sin gastos variables registrados" />
+                )
+              )}
               <ExecRow
                 label="Total gastos"
                 plan={totalGastosPlan}
@@ -833,91 +1042,6 @@ function ExecTab({ data }: ExecTabProps) {
           </table>
         </div>
       </Card>
-
-      {/* Variable category detail */}
-      {data.gastos_variables.length > 0 && (
-        <Card>
-          <button
-            onClick={() => setShowCatDetail((v) => !v)}
-            className="w-full flex items-center justify-between mb-1"
-          >
-            <SectionHeader title="Variables por categoría" />
-            <span className="text-xs text-blue-500 hover:underline -mt-3">
-              {showCatDetail ? "Ocultar" : "Ver detalle"}
-            </span>
-          </button>
-          {showCatDetail && (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    {["Categoría", "Planificado", "Real", "Diferencia"].map((h) => (
-                      <th
-                        key={h}
-                        className={clsx(
-                          "pb-2 text-xs font-semibold text-gray-500 uppercase tracking-wide",
-                          h === "Categoría" ? "text-left px-4" : "text-right px-4",
-                          h === "Planificado" && "hidden sm:table-cell"
-                        )}
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {varCategoriesWithReal.map((cat) => (
-                    <ExecRow
-                      key={cat.nombre}
-                      label={cat.nombre}
-                      plan={cat.plan}
-                      real={cat.real}
-                      colorScheme="expense"
-                    />
-                  ))}
-                  {unplannedCategories.map((cat) => (
-                    <ExecRow
-                      key={cat.nombre}
-                      label={`${cat.nombre} (sin plan)`}
-                      plan={0}
-                      real={cat.importe_real}
-                      colorScheme="expense"
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Real category breakdown */}
-      {data.gastos_reales_por_categoria.length > 0 && (
-        <Card>
-          <SectionHeader title="Gasto real por categoría" />
-          <div className="space-y-2">
-            {data.gastos_reales_por_categoria.map((item) => {
-              const pct = data.total_gastos_reales > 0
-                ? (item.importe_real / data.total_gastos_reales) * 100
-                : 0;
-              return (
-                <div key={item.nombre}>
-                  <div className="flex items-center justify-between text-sm mb-0.5">
-                    <span className="text-gray-700 truncate max-w-[55%]">{item.nombre}</span>
-                    <span className="tabular-nums text-gray-800">{formatCurrency(item.importe_real)}</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-blue-400 rounded-full"
-                      style={{ width: `${Math.min(pct, 100)}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
 
       {data.gastos_reales_por_categoria.length === 0 && (
         <div className="text-center py-12 text-gray-400 text-sm">

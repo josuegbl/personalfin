@@ -10,6 +10,13 @@ export default defineConfig({
       "/api": {
         target: process.env.API_PROXY_TARGET || process.env.VITE_API_URL || "http://localhost:8000",
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on("proxyRes", (proxyRes) => {
+            // Safari has a race condition with connection: close on keep-alive sockets.
+            // Strip the hop-by-hop header so Safari keeps the connection open normally.
+            delete proxyRes.headers["connection"];
+          });
+        },
       },
     },
   },
