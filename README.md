@@ -1,2 +1,2 @@
 # personalfin
-project to avaluate several
+project to avaluate a coding agent
