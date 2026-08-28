@@ -98,7 +98,7 @@ def _last_saved_plan(year: int, month: int, db: Session) -> "ForecastPlan | None
 def _effective_plan_values(
     plan: ForecastPlan, year: int, month: int, db: Session
 ) -> tuple[float, float, float, float]:
-    """Return (josue_income, adi_income, josue_personal, adi_personal) effective values.
+    """Return the two account incomes and personal allocations.
 
     Priority:
       1. Current plan's explicitly saved values (if plan.guardado).
@@ -112,45 +112,45 @@ def _effective_plan_values(
         db: Database session.
 
     Returns:
-        Tuple of (josue_income, adi_income, josue_personal, adi_personal).
+        Tuple of (account A income, account B income, account A personal, account B personal).
     """
     if plan.guardado:
-        josue_inc = float(plan.ingresos_planificados_josue) if plan.ingresos_planificados_josue is not None else None
-        adi_inc = float(plan.ingresos_planificados_adi) if plan.ingresos_planificados_adi is not None else None
-        josue_per = float(plan.cuenta_personal_josue)
-        adi_per = float(plan.cuenta_personal_adi)
+        account_a_income = float(plan.ingresos_planificados_a) if plan.ingresos_planificados_a is not None else None
+        account_b_income = float(plan.ingresos_planificados_b) if plan.ingresos_planificados_b is not None else None
+        account_a_personal = float(plan.cuenta_personal_a)
+        account_b_personal = float(plan.cuenta_personal_b)
     else:
-        josue_inc = None
-        adi_inc = None
-        josue_per = None
-        adi_per = None
+        account_a_income = None
+        account_b_income = None
+        account_a_personal = None
+        account_b_personal = None
 
-    if any(v is None for v in [josue_inc, adi_inc, josue_per, adi_per]):
+    if any(v is None for v in [account_a_income, account_b_income, account_a_personal, account_b_personal]):
         prev = _last_saved_plan(year, month, db)
         if prev:
-            if josue_inc is None and prev.ingresos_planificados_josue is not None:
-                josue_inc = float(prev.ingresos_planificados_josue)
-            if adi_inc is None and prev.ingresos_planificados_adi is not None:
-                adi_inc = float(prev.ingresos_planificados_adi)
-            if josue_per is None:
-                josue_per = float(prev.cuenta_personal_josue)
-            if adi_per is None:
-                adi_per = float(prev.cuenta_personal_adi)
+            if account_a_income is None and prev.ingresos_planificados_a is not None:
+                account_a_income = float(prev.ingresos_planificados_a)
+            if account_b_income is None and prev.ingresos_planificados_b is not None:
+                account_b_income = float(prev.ingresos_planificados_b)
+            if account_a_personal is None:
+                account_a_personal = float(prev.cuenta_personal_a)
+            if account_b_personal is None:
+                account_b_personal = float(prev.cuenta_personal_b)
 
-    if josue_inc is None or adi_inc is None:
+    if account_a_income is None or account_b_income is None:
         ri = db.query(RecurringIncome).filter(RecurringIncome.activa == True).all()  # noqa: E712
-        if josue_inc is None:
-            josue_inc = sum(
+        if account_a_income is None:
+            account_a_income = sum(
                 float(r.importe) for r in ri
-                if r.propietario and "josue" in r.propietario.lower()
+                if r.propietario and "cuenta_a" in r.propietario.lower()
             ) or 0.0
-        if adi_inc is None:
-            adi_inc = sum(
+        if account_b_income is None:
+            account_b_income = sum(
                 float(r.importe) for r in ri
-                if r.propietario and "adi" in r.propietario.lower()
+                if r.propietario and "cuenta_b" in r.propietario.lower()
             ) or 0.0
 
-    return josue_inc or 0.0, adi_inc or 0.0, josue_per or 0.0, adi_per or 0.0
+    return account_a_income or 0.0, account_b_income or 0.0, account_a_personal or 0.0, account_b_personal or 0.0
 
 
 def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> ForecastResponse:
@@ -178,7 +178,7 @@ def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> F
     today = date.today()
     es_ejecucion = date(year, month, 1) < date(today.year, today.month, 1)
 
-    josue_inc, adi_inc, josue_per, adi_per = _effective_plan_values(plan, year, month, db)
+    account_a_income, account_b_income, account_a_personal, account_b_personal = _effective_plan_values(plan, year, month, db)
 
     is_nomina = _nomina_condition(db)
 
@@ -304,12 +304,12 @@ def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> F
     ]
 
     # --- Totals ---
-    total_cuentas_personales_plan = josue_per + adi_per
+    total_cuentas_personales_plan = account_a_personal + account_b_personal
     total_gastos_fijos_plan = sum(item.importe_planificado for item in gastos_fijos)
     total_gastos_variables_plan = sum(item.importe_planificado for item in gastos_variables)
     ahorro_estimado = (
-        josue_inc
-        + adi_inc
+        account_a_income
+        + account_b_income
         - total_cuentas_personales_plan
         - total_gastos_fijos_plan
         - total_gastos_variables_plan
@@ -320,11 +320,11 @@ def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> F
         anio=year,
         mes=month,
         es_ejecucion=es_ejecucion,
-        cuenta_personal_josue=josue_per,
-        cuenta_personal_adi=adi_per,
+        cuenta_personal_a=account_a_personal,
+        cuenta_personal_b=account_b_personal,
         ingresos_planificados=float(plan.ingresos_planificados) if plan.ingresos_planificados is not None else None,
-        ingresos_josue=josue_inc,
-        ingresos_adi=adi_inc,
+        ingresos_persona_a=account_a_income,
+        ingresos_persona_b=account_b_income,
         ingresos_nomina=ingresos_nomina,
         ingresos_otros=ingresos_otros,
         ingresos_reales=ingresos_reales,
@@ -413,11 +413,11 @@ def upsert_forecast(
         plan = ForecastPlan(anio=year, mes=month)
         db.add(plan)
 
-    plan.cuenta_personal_josue = Decimal(str(body.cuenta_personal_josue))
-    plan.cuenta_personal_adi = Decimal(str(body.cuenta_personal_adi))
-    plan.ingresos_planificados_josue = Decimal(str(body.ingresos_josue))
-    plan.ingresos_planificados_adi = Decimal(str(body.ingresos_adi))
-    plan.ingresos_planificados = Decimal(str(body.ingresos_josue + body.ingresos_adi))
+    plan.cuenta_personal_a = Decimal(str(body.cuenta_personal_a))
+    plan.cuenta_personal_b = Decimal(str(body.cuenta_personal_b))
+    plan.ingresos_planificados_a = Decimal(str(body.ingresos_persona_a))
+    plan.ingresos_planificados_b = Decimal(str(body.ingresos_persona_b))
+    plan.ingresos_planificados = Decimal(str(body.ingresos_persona_a + body.ingresos_persona_b))
     plan.guardado = True
 
     for budget in list(plan.budgets):

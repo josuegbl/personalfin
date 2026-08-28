@@ -24,11 +24,11 @@ from playwright.sync_api import sync_playwright
 OUT_DIR = Path("/tmp/bbva2_inspect")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-BBVA_USER = os.environ.get("BBVA_JGB_USER", "")
-BBVA_PASS = os.environ.get("BBVA_JGB_PASSWORD", "")
+BBVA_USER = os.environ.get("BBVA_CUENTA_A_USER", "")
+BBVA_PASS = os.environ.get("BBVA_CUENTA_A_PASSWORD", "")
 
 if not BBVA_USER or not BBVA_PASS:
-    print("ERROR: Define BBVA_JGB_USER y BBVA_JGB_PASSWORD en backend/.env")
+    print("ERROR: Define BBVA_CUENTA_A_USER y BBVA_CUENTA_A_PASSWORD en backend/.env")
     sys.exit(1)
 
 # Argumentos para reducir la huella de automatización

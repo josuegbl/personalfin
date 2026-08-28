@@ -8,10 +8,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change_me"
 
     # BBVA — sync automático via Playwright
-    BBVA_JGB_USER: str = ""
-    BBVA_JGB_PASSWORD: str = ""
-    BBVA_ADI_USER: str = ""
-    BBVA_ADI_PASSWORD: str = ""
+    BBVA_CUENTA_A_USER: str = ""
+    BBVA_CUENTA_A_PASSWORD: str = ""
+    BBVA_CUENTA_B_USER: str = ""
+    BBVA_CUENTA_B_PASSWORD: str = ""
 
 
 settings = Settings()

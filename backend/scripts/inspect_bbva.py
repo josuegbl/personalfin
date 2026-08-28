@@ -8,7 +8,7 @@ Uso:
     cd backend
     python scripts/inspect_bbva.py
 
-Necesita las credenciales en .env (BBVA_JGB_USER / BBVA_JGB_PASSWORD).
+Necesita las credenciales en .env (BBVA_CUENTA_A_USER / BBVA_CUENTA_A_PASSWORD).
 Genera screenshots en /tmp/bbva_inspect/ y vuelca el HTML de cada paso.
 """
 
@@ -28,11 +28,11 @@ from playwright.sync_api import sync_playwright
 OUT_DIR = Path("/tmp/bbva_inspect")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-BBVA_USER = os.environ.get("BBVA_JGB_USER", "")
-BBVA_PASS = os.environ.get("BBVA_JGB_PASSWORD", "")
+BBVA_USER = os.environ.get("BBVA_CUENTA_A_USER", "")
+BBVA_PASS = os.environ.get("BBVA_CUENTA_A_PASSWORD", "")
 
 if not BBVA_USER or not BBVA_PASS:
-    print("ERROR: Define BBVA_JGB_USER y BBVA_JGB_PASSWORD en backend/.env")
+    print("ERROR: Define BBVA_CUENTA_A_USER y BBVA_CUENTA_A_PASSWORD en backend/.env")
     sys.exit(1)
 
 

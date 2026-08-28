@@ -146,11 +146,11 @@ export interface ForecastCategoryInput {
 }
 
 export interface ForecastPlanUpdate {
-  cuenta_personal_josue: number;
-  cuenta_personal_adi: number;
+  cuenta_personal_a: number;
+  cuenta_personal_b: number;
   ingresos_planificados?: number | null;
-  ingresos_josue: number;
-  ingresos_adi: number;
+  ingresos_persona_a: number;
+  ingresos_persona_b: number;
   categorias: ForecastCategoryInput[];
 }
 
@@ -158,11 +158,11 @@ export interface ForecastData {
   anio: number;
   mes: number;
   es_ejecucion: boolean;
-  cuenta_personal_josue: number;
-  cuenta_personal_adi: number;
+  cuenta_personal_a: number;
+  cuenta_personal_b: number;
   ingresos_planificados: number | null;
-  ingresos_josue: number;
-  ingresos_adi: number;
+  ingresos_persona_a: number;
+  ingresos_persona_b: number;
   ingresos_nomina: number;
   ingresos_otros: number;
   ingresos_reales: number;

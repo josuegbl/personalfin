@@ -96,8 +96,8 @@ class BBVAPlaywrightAdapter(SourceAdapter):
     de movimientos desde web.bbva.es.
 
     Credenciales requeridas en backend/.env según el propietario de la cuenta:
-        Josué  → BBVA_JGB_USER / BBVA_JGB_PASSWORD
-        Adi    → BBVA_ADI_USER / BBVA_ADI_PASSWORD
+        Cuenta A → BBVA_CUENTA_A_USER / BBVA_CUENTA_A_PASSWORD
+        Cuenta B → BBVA_CUENTA_B_USER / BBVA_CUENTA_B_PASSWORD
     """
 
     _LOGIN_URL  = "https://www.bbva.es/nimbus/signin.html"
@@ -116,9 +116,8 @@ class BBVAPlaywrightAdapter(SourceAdapter):
     )
     # propietario normalizado → prefijo de variables de entorno
     _CREDENTIAL_MAP: dict[str, str] = {
-        "JOSUE":  "BBVA_JGB",
-        "ADI":    "BBVA_ADI",
-        "MUJER":  "BBVA_ADI",
+        "CUENTA_A": "BBVA_CUENTA_A",
+        "CUENTA_B": "BBVA_CUENTA_B",
     }
 
     def fetch_transactions(self) -> list[RawTransaction]:
@@ -188,7 +187,7 @@ class BBVAPlaywrightAdapter(SourceAdapter):
             c for c in unicodedata.normalize("NFD", propietario_raw.upper())
             if unicodedata.category(c) != "Mn"
         )
-        prefix = self._CREDENTIAL_MAP.get(normalized, "BBVA_JGB")
+        prefix = self._CREDENTIAL_MAP.get(normalized, "BBVA_CUENTA_A")
 
         user     = os.environ.get(f"{prefix}_USER", "")
         password = os.environ.get(f"{prefix}_PASSWORD", "")

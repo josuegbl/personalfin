@@ -19,8 +19,8 @@ Uso:
     python3 scripts/inspect_bbva3.py
 
 Requiere en backend/.env:
-    BBVA_JGB_USER=<tu_NIF>
-    BBVA_JGB_PASSWORD=<tu_clave_de_acceso>
+    BBVA_CUENTA_A_USER=<tu_NIF>
+    BBVA_CUENTA_A_PASSWORD=<tu_clave_de_acceso>
 """
 
 import os
@@ -38,12 +38,12 @@ from playwright.sync_api import sync_playwright, Page, BrowserContext
 OUT_DIR = Path("/tmp/bbva3_inspect")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-BBVA_USER = os.environ.get("BBVA_JGB_USER", "")
-BBVA_PASS = os.environ.get("BBVA_JGB_PASSWORD", "")
+BBVA_USER = os.environ.get("BBVA_CUENTA_A_USER", "")
+BBVA_PASS = os.environ.get("BBVA_CUENTA_A_PASSWORD", "")
 LOGIN_URL  = "https://www.bbva.es/nimbus/signin.html"
 
 if not BBVA_USER or not BBVA_PASS:
-    print("ERROR: Define BBVA_JGB_USER y BBVA_JGB_PASSWORD en backend/.env")
+    print("ERROR: Define BBVA_CUENTA_A_USER y BBVA_CUENTA_A_PASSWORD en backend/.env")
     sys.exit(1)
 
 STEALTH_ARGS = [

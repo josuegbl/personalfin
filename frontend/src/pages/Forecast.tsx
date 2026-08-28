@@ -101,10 +101,10 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
     queryKey: ["categories"],
     queryFn: api.categories.list,
   });
-  const [ingresosJosue, setIngresosJosue] = useState(String(data.ingresos_josue));
-  const [ingresosAdi, setIngresosAdi] = useState(String(data.ingresos_adi));
-  const [personalJosue, setPersonalJosue] = useState(String(data.cuenta_personal_josue));
-  const [personalAdi, setPersonalAdi] = useState(String(data.cuenta_personal_adi));
+  const [ingresosPersonaA, setIngresosPersonaA] = useState(String(data.ingresos_persona_a));
+  const [ingresosPersonaB, setIngresosPersonaB] = useState(String(data.ingresos_persona_b));
+  const [personalPersonaA, setPersonalPersonaA] = useState(String(data.cuenta_personal_a));
+  const [personalPersonaB, setPersonalPersonaB] = useState(String(data.cuenta_personal_b));
   const [categorias, setCategorias] = useState<CatDraft[]>(
     data.gastos_variables.map((g) => ({ nombre: g.nombre, importe_planificado: String(g.importe_planificado) }))
   );
@@ -135,10 +135,10 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
   const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
-    setIngresosJosue(String(data.ingresos_josue));
-    setIngresosAdi(String(data.ingresos_adi));
-    setPersonalJosue(String(data.cuenta_personal_josue));
-    setPersonalAdi(String(data.cuenta_personal_adi));
+    setIngresosPersonaA(String(data.ingresos_persona_a));
+    setIngresosPersonaB(String(data.ingresos_persona_b));
+    setPersonalPersonaA(String(data.cuenta_personal_a));
+    setPersonalPersonaB(String(data.cuenta_personal_b));
     setCategorias(data.gastos_variables.map((g) => ({ nombre: g.nombre, importe_planificado: String(g.importe_planificado) })));
     setFijos(data.gastos_fijos_por_categoria.flatMap((group) =>
       group.subcategorias
@@ -157,8 +157,8 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
     setNewVariableAmount("");
   }, [data, year, month]);
 
-  const totalPersonal = parseAmount(personalJosue) + parseAmount(personalAdi);
-  const ingresosNomina = parseAmount(ingresosJosue) + parseAmount(ingresosAdi);
+  const totalPersonal = parseAmount(personalPersonaA) + parseAmount(personalPersonaB);
+  const ingresosNomina = parseAmount(ingresosPersonaA) + parseAmount(ingresosPersonaB);
   const totalFijos = fijos.reduce((s, f) => {
     const tier = getTierForMonth(f.tiers, month);
     return s + (tier ? parseAmount(tier.importe) : 0);
@@ -350,10 +350,10 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
     setSaving(true);
     try {
       await api.forecast.save(year, month, {
-        cuenta_personal_josue: parseAmount(personalJosue),
-        cuenta_personal_adi: parseAmount(personalAdi),
-        ingresos_josue: parseAmount(ingresosJosue),
-        ingresos_adi: parseAmount(ingresosAdi),
+        cuenta_personal_a: parseAmount(personalPersonaA),
+        cuenta_personal_b: parseAmount(personalPersonaB),
+        ingresos_persona_a: parseAmount(ingresosPersonaA),
+        ingresos_persona_b: parseAmount(ingresosPersonaB),
         categorias: categorias.map((c) => ({ nombre: c.nombre, importe_planificado: parseAmount(c.importe_planificado) })),
       });
       qc.invalidateQueries({ queryKey: ["forecast", year, month] });
@@ -370,8 +370,8 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
         <SectionHeader title="Ingresos" />
         <div className="space-y-2">
           {[
-            { label: "Josué", value: ingresosJosue, setter: setIngresosJosue },
-            { label: "Adi", value: ingresosAdi, setter: setIngresosAdi },
+            { label: "Persona A", value: ingresosPersonaA, setter: setIngresosPersonaA },
+            { label: "Persona B", value: ingresosPersonaB, setter: setIngresosPersonaB },
           ].map(({ label, value, setter }) => (
             <div key={label} className="flex items-center justify-between gap-4">
               <span className="text-sm text-gray-700 w-20">{label}</span>
@@ -386,8 +386,8 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
         <SectionHeader title="Ingresos personales" />
         <div className="space-y-2">
           {[
-            { label: "Josué", value: personalJosue, setter: setPersonalJosue },
-            { label: "Adi", value: personalAdi, setter: setPersonalAdi },
+            { label: "Persona A", value: personalPersonaA, setter: setPersonalPersonaA },
+            { label: "Persona B", value: personalPersonaB, setter: setPersonalPersonaB },
           ].map(({ label, value, setter }) => (
             <div key={label} className="flex items-center justify-between gap-4">
               <span className="text-sm text-gray-700 w-20">{label}</span>
@@ -959,7 +959,7 @@ function ExecTab({ data }: ExecTabProps) {
             <tbody>
               <ExecRow
                 label="Ingresos"
-                plan={data.ingresos_josue + data.ingresos_adi}
+                plan={data.ingresos_persona_a + data.ingresos_persona_b}
                 real={data.ingresos_reales}
                 colorScheme="income"
                 expanded={showIncomeDetail}
@@ -969,7 +969,7 @@ function ExecTab({ data }: ExecTabProps) {
                 <>
                   <ExecDetailRow
                     label="Nóminas"
-                    plan={data.ingresos_josue + data.ingresos_adi}
+                    plan={data.ingresos_persona_a + data.ingresos_persona_b}
                     real={data.ingresos_nomina}
                   />
                   {data.ingresos_otros !== 0 && (

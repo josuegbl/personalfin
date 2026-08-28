@@ -39,11 +39,11 @@ class FixedCategoryGroup(BaseModel):
 class ForecastPlanUpdate(BaseModel):
     """Request body for creating or updating a monthly forecast plan."""
 
-    cuenta_personal_josue: float
-    cuenta_personal_adi: float
+    cuenta_personal_a: float
+    cuenta_personal_b: float
     ingresos_planificados: float | None = None
-    ingresos_josue: float
-    ingresos_adi: float
+    ingresos_persona_a: float
+    ingresos_persona_b: float
     categorias: list[ForecastCategoryInput]
 
 
@@ -63,13 +63,13 @@ class ForecastResponse(BaseModel):
     es_ejecucion: bool
 
     # Personal budget allocations; treated as a separate expense in execution.
-    cuenta_personal_josue: float
-    cuenta_personal_adi: float
+    cuenta_personal_a: float
+    cuenta_personal_b: float
 
     # User-editable planned income (gross nóminas). None = no manual override.
     ingresos_planificados: float | None
-    ingresos_josue: float   # effective planned gross income for Josué
-    ingresos_adi: float     # effective planned gross income for Adi
+    ingresos_persona_a: float
+    ingresos_persona_b: float
 
     # Income breakdown (computed from actual transactions)
     ingresos_nomina: float   # Salaries from M-1

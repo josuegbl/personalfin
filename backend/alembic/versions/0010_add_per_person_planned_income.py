@@ -17,11 +17,11 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "forecast_plans",
-        sa.Column("ingresos_planificados_josue", sa.Numeric(10, 2), nullable=True),
+        sa.Column("ingresos_planificados_a", sa.Numeric(10, 2), nullable=True),
     )
     op.add_column(
         "forecast_plans",
-        sa.Column("ingresos_planificados_adi", sa.Numeric(10, 2), nullable=True),
+        sa.Column("ingresos_planificados_b", sa.Numeric(10, 2), nullable=True),
     )
     op.add_column(
         "forecast_plans",
@@ -31,5 +31,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_column("forecast_plans", "guardado")
-    op.drop_column("forecast_plans", "ingresos_planificados_adi")
-    op.drop_column("forecast_plans", "ingresos_planificados_josue")
+    op.drop_column("forecast_plans", "ingresos_planificados_b")
+    op.drop_column("forecast_plans", "ingresos_planificados_a")

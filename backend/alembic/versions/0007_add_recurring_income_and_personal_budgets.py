@@ -33,17 +33,17 @@ def upgrade() -> None:
 
     conn.execute(sa.text("""
         ALTER TABLE forecast_plans
-            ADD COLUMN IF NOT EXISTS cuenta_personal_josue NUMERIC(10, 2) NOT NULL DEFAULT 0
+            ADD COLUMN IF NOT EXISTS cuenta_personal_a NUMERIC(10, 2) NOT NULL DEFAULT 0
     """))
     conn.execute(sa.text("""
         ALTER TABLE forecast_plans
-            ADD COLUMN IF NOT EXISTS cuenta_personal_adi NUMERIC(10, 2) NOT NULL DEFAULT 0
+            ADD COLUMN IF NOT EXISTS cuenta_personal_b NUMERIC(10, 2) NOT NULL DEFAULT 0
     """))
 
 
 def downgrade() -> None:
     conn = op.get_bind()
-    conn.execute(sa.text("ALTER TABLE forecast_plans DROP COLUMN IF EXISTS cuenta_personal_adi"))
-    conn.execute(sa.text("ALTER TABLE forecast_plans DROP COLUMN IF EXISTS cuenta_personal_josue"))
+    conn.execute(sa.text("ALTER TABLE forecast_plans DROP COLUMN IF EXISTS cuenta_personal_b"))
+    conn.execute(sa.text("ALTER TABLE forecast_plans DROP COLUMN IF EXISTS cuenta_personal_a"))
     conn.execute(sa.text("DROP INDEX IF EXISTS ix_recurring_incomes_id"))
     conn.execute(sa.text("DROP TABLE IF EXISTS recurring_incomes"))

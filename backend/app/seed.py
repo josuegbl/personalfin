@@ -46,7 +46,7 @@ RECURRING_EXPENSES = [
         "tiers": [{"importe": 550.93, "meses": None}],
     },
     {
-        "concepto": "Préstamo BBVA JGB",
+        "concepto": "Préstamo BBVA",
         "tipo": "fijo", "dia_cobro": 5, "categoria": "Préstamos",
         "tiers": [{"importe": 30.30, "meses": None}],
     },
@@ -116,7 +116,7 @@ RECURRING_EXPENSES = [
         "tiers": [{"importe": 1.79, "meses": None}],
     },
     {
-        "concepto": "Paga Carlos",
+        "concepto": "Pago personal",
         "tipo": "fijo", "dia_cobro": 1, "categoria": "Otros",
         "tiers": [{"importe": 21.73, "meses": None}],
     },
