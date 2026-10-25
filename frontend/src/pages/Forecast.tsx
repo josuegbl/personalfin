@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, Save, TrendingUp, Pencil } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Lock, Plus, Trash2, TrendingUp, X, Pencil } from "lucide-react";
 import clsx from "clsx";
 import { api } from "../api/client";
 import { formatCurrency, formatLocaleNumberInput, parseLocaleNumberInput } from "../utils/format";
@@ -35,10 +35,47 @@ function Card({ children, className }: { children: React.ReactNode; className?: 
   );
 }
 
+function ExpenseEditPanel({
+  children,
+  saving,
+  onCancel,
+  onConfirm,
+  disabled = false,
+}: {
+  children: React.ReactNode;
+  saving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="mb-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3 space-y-3">
+      {children}
+      <div className="flex gap-2 justify-end">
+        <button
+          onClick={onCancel}
+          className="px-3 py-1.5 text-sm rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={disabled || saving}
+          className={CONFIRM_BUTTON_CLASS}
+        >
+          {saving ? "Guardando…" : "Confirmar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const MONTH_ABBREVS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+const CONFIRM_BUTTON_CLASS = "px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors";
 
 type TierDraft = { importe: string; meses: number[] | null };
 type CatDraft = { nombre: string; importe_planificado: string };
+type PlanValueKey = "cuenta_personal_a" | "cuenta_personal_b" | "ingresos_persona_a" | "ingresos_persona_b";
 
 type FixedDraft = { id: number; categoria: string; nombre: string; tiers: TierDraft[] };
 type EditDraft = { concepto: string; tiers: TierDraft[] };
@@ -78,6 +115,95 @@ function MoneyInput({ value, onValueChange, placeholder, autoFocus, className }:
       >
         €
       </span>
+    </div>
+  );
+}
+
+function PlannedAmountRow({
+  label,
+  value,
+  editing,
+  editValue,
+  deleteConfirmation,
+  saving,
+  onStartEdit,
+  onEditValueChange,
+  onConfirmEdit,
+  onCancelEdit,
+  onRequestDelete,
+  onConfirmDelete,
+  onCancelDelete,
+}: {
+  label: string;
+  value: string;
+  editing: boolean;
+  editValue: string;
+  deleteConfirmation: boolean;
+  saving: boolean;
+  onStartEdit: () => void;
+  onEditValueChange: (value: string) => void;
+  onConfirmEdit: () => void;
+  onCancelEdit: () => void;
+  onRequestDelete: () => void;
+  onConfirmDelete: () => void;
+  onCancelDelete: () => void;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 py-1.5">
+        <span className="text-sm text-gray-700 flex-1 min-w-0 truncate">{label}</span>
+        <span className="text-sm tabular-nums text-gray-800 shrink-0">
+          {formatCurrency(parseAmount(value))}
+        </span>
+        {!editing && (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={onStartEdit}
+              title={`Editar ${label}`}
+              aria-label={`Editar ${label}`}
+              className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-300 hover:text-blue-500 transition-colors"
+            >
+              <Pencil size={14} />
+            </button>
+            {deleteConfirmation ? (
+              <>
+                <button
+                  onClick={onConfirmDelete}
+                  disabled={saving}
+                  className="px-2 py-1 text-xs rounded-md bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 transition-colors"
+                >
+                  {saving ? "Borrando…" : "Borrar"}
+                </button>
+                <button
+                  onClick={onCancelDelete}
+                  disabled={saving}
+                  className="px-2 py-1 text-xs rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                >
+                  No
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={onRequestDelete}
+                title={`Eliminar ${label}`}
+                aria-label={`Eliminar ${label}`}
+                className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {editing && (
+        <ExpenseEditPanel
+          saving={saving}
+          onCancel={onCancelEdit}
+          onConfirm={onConfirmEdit}
+        >
+          <MoneyInput value={editValue} onValueChange={onEditValueChange} autoFocus />
+        </ExpenseEditPanel>
+      )}
     </div>
   );
 }
@@ -132,6 +258,10 @@ function PlanTab({ data, year, month }: PlanTabProps) {
   const [editingFijoId, setEditingFijoId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft>({ concepto: "", tiers: [] });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [editingPlanLine, setEditingPlanLine] = useState<string | null>(null);
+  const [planLineDraft, setPlanLineDraft] = useState("");
+  const [confirmDeletePlanLine, setConfirmDeletePlanLine] = useState<string | null>(null);
+  const [savingPlanLine, setSavingPlanLine] = useState(false);
 
   useEffect(() => {
     setIngresosPersonaA(String(data.ingresos_persona_a));
@@ -150,6 +280,8 @@ function PlanTab({ data, year, month }: PlanTabProps) {
         }))
     ));
     setEditingFijoId(null);
+    setEditingPlanLine(null);
+    setConfirmDeletePlanLine(null);
     setNewFijoCategoria(parentCategoryOptions[0] ?? "");
     setShowNewVariable(false);
     setNewVariableCategoria(parentCategoryOptions[0] ?? "");
@@ -191,27 +323,22 @@ function PlanTab({ data, year, month }: PlanTabProps) {
     if (!subcategories.some((category) => category.nombre === newFijoSubcategoria)) {
       setNewFijoSubcategoria(subcategories[0]?.nombre ?? "");
     }
-    if (!parentCategoryOptions.includes(newVariableCategoria)) {
+    if (!allCategories?.some((category) => category.nombre === newVariableCategoria)) {
       setNewVariableCategoria(defaultCategory);
     }
   }, [allCategories, newFijoCategoria, newFijoSubcategoria]);
 
 
-  function updateCatAmount(index: number, value: string) {
-    setCategorias((prev) => prev.map((c, i) => (i === index ? { ...c, importe_planificado: value } : c)));
-  }
-
-  function handleAddVariableCategory() {
+  async function handleAddVariableCategory() {
     const category = newVariableCategoria.trim();
     if (!category) return;
     const amount = String(parseAmount(newVariableAmount));
-    setCategorias((prev) => {
-      const existingIdx = prev.findIndex((c) => c.nombre === category);
-      if (existingIdx >= 0) {
-        return prev.map((c, i) => (i === existingIdx ? { ...c, importe_planificado: amount } : c));
-      }
-      return [...prev, { nombre: category, importe_planificado: amount }];
-    });
+    const existingIdx = categorias.findIndex((c) => c.nombre === category);
+    const nextCategories = existingIdx >= 0
+      ? categorias.map((item, index) => index === existingIdx ? { ...item, importe_planificado: amount } : item)
+      : [...categorias, { nombre: category, importe_planificado: amount }];
+    await handleSave(nextCategories);
+    setCategorias(nextCategories);
     setShowNewVariable(false);
     setNewVariableCategoria(parentCategoryOptions[0] ?? "");
     setNewVariableAmount("");
@@ -220,14 +347,77 @@ function PlanTab({ data, year, month }: PlanTabProps) {
   async function handleDeleteFijo(id: number) {
     await api.recurringExpenses.delete(id);
     setFijos((prev) => prev.filter((f) => f.id !== id));
+    await handleSave();
     setConfirmDeleteId(null);
   }
 
   function startEditFijo(fijo: FixedDraft) {
     setEditingFijoId(fijo.id);
+    setEditingPlanLine(null);
     setEditDraft({ concepto: fijo.nombre, tiers: fijo.tiers.map(t => ({ ...t })) });
     setConfirmDeleteId(null);
     setShowNewFijo(false);
+  }
+
+  function setPlanFieldValue(key: PlanValueKey, value: string) {
+    switch (key) {
+      case "ingresos_persona_a": setIngresosPersonaA(value); break;
+      case "ingresos_persona_b": setIngresosPersonaB(value); break;
+      case "cuenta_personal_a": setPersonalPersonaA(value); break;
+      case "cuenta_personal_b": setPersonalPersonaB(value); break;
+    }
+  }
+
+  function startEditPlanLine(key: string, value: string) {
+    setEditingPlanLine(key);
+    setPlanLineDraft(value);
+    setConfirmDeletePlanLine(null);
+    setEditingFijoId(null);
+    setConfirmDeleteId(null);
+    setShowNewFijo(false);
+    setShowNewVariable(false);
+  }
+
+  async function handleSavePlanLine(key: string) {
+    setSavingPlanLine(true);
+    try {
+      const value = String(parseAmount(planLineDraft));
+      if (key.startsWith("variable:")) {
+        const categoryName = key.slice("variable:".length);
+        const nextCategories = categorias.map((category) => category.nombre === categoryName
+          ? { ...category, importe_planificado: value }
+          : category
+        );
+        await handleSave(nextCategories);
+        setCategorias(nextCategories);
+      } else {
+        const field = key.slice("plan:".length) as PlanValueKey;
+        await handleSave(categorias, { [field]: parseAmount(planLineDraft) }, [field]);
+        setPlanFieldValue(field, value);
+      }
+      setEditingPlanLine(null);
+    } finally {
+      setSavingPlanLine(false);
+    }
+  }
+
+  async function handleDeletePlanLine(key: string) {
+    setSavingPlanLine(true);
+    try {
+      if (key.startsWith("variable:")) {
+        const categoryName = key.slice("variable:".length);
+        const nextCategories = categorias.filter((category) => category.nombre !== categoryName);
+        await handleSave(nextCategories);
+        setCategorias(nextCategories);
+      } else {
+        const field = key.slice("plan:".length) as PlanValueKey;
+        await handleSave(categorias, { [field]: 0 }, [field]);
+        setPlanFieldValue(field, "0");
+      }
+      setConfirmDeletePlanLine(null);
+    } finally {
+      setSavingPlanLine(false);
+    }
   }
 
   // --- Edit tier helpers ---
@@ -315,6 +505,7 @@ function PlanTab({ data, year, month }: PlanTabProps) {
           })
       );
       setEditingFijoId(null);
+      await handleSave();
     } finally {
       setSavingEdit(false);
     }
@@ -336,6 +527,7 @@ function PlanTab({ data, year, month }: PlanTabProps) {
         nombre: created.concepto,
         tiers: tierDrafts,
       }]);
+      await handleSave();
       setNewFijoCategoria(parentCategoryOptions[0] ?? "");
       setNewFijoSubcategoria("");
       setNewFijoTiers([{ importe: "", meses: null }]);
@@ -345,17 +537,22 @@ function PlanTab({ data, year, month }: PlanTabProps) {
     }
   }
 
-  async function handleSave() {
+  async function handleSave(
+    categoriesToSave = categorias,
+    valueOverrides: Partial<Record<PlanValueKey, number>> = {},
+    fieldsToPropagate: PlanValueKey[] = [],
+  ) {
     setSaving(true);
     try {
       await api.forecast.save(year, month, {
-        cuenta_personal_a: parseAmount(personalPersonaA),
-        cuenta_personal_b: parseAmount(personalPersonaB),
-        ingresos_persona_a: parseAmount(ingresosPersonaA),
-        ingresos_persona_b: parseAmount(ingresosPersonaB),
-        categorias: categorias.map((c) => ({ nombre: c.nombre, importe_planificado: parseAmount(c.importe_planificado) })),
+        cuenta_personal_a: valueOverrides.cuenta_personal_a ?? parseAmount(personalPersonaA),
+        cuenta_personal_b: valueOverrides.cuenta_personal_b ?? parseAmount(personalPersonaB),
+        ingresos_persona_a: valueOverrides.ingresos_persona_a ?? parseAmount(ingresosPersonaA),
+        ingresos_persona_b: valueOverrides.ingresos_persona_b ?? parseAmount(ingresosPersonaB),
+        categorias: categoriesToSave.map((c) => ({ nombre: c.nombre, importe_planificado: parseAmount(c.importe_planificado) })),
+        ...(fieldsToPropagate.length > 0 && { propagar_campos: fieldsToPropagate }),
       });
-      qc.invalidateQueries({ queryKey: ["forecast", year, month] });
+      await qc.invalidateQueries({ queryKey: ["forecast"] });
     } finally {
       setSaving(false);
     }
@@ -363,35 +560,65 @@ function PlanTab({ data, year, month }: PlanTabProps) {
 
   return (
     <div className="space-y-5">
-      {/* Ingresos — editable per person */}
+      {/* Ingresos */}
       <Card>
         <SectionHeader title="Ingresos" />
         <div className="space-y-2">
           {[
-            { label: "Persona A", value: ingresosPersonaA, setter: setIngresosPersonaA },
-            { label: "Persona B", value: ingresosPersonaB, setter: setIngresosPersonaB },
-          ].map(({ label, value, setter }) => (
-            <div key={label} className="flex items-center justify-between gap-4">
-              <span className="text-sm text-gray-700 w-20">{label}</span>
-              <MoneyInput value={value} onValueChange={setter} className="flex-1 max-w-48" />
-            </div>
-          ))}
+            { key: "ingresos_persona_a" as const, label: "Persona A", value: ingresosPersonaA },
+            { key: "ingresos_persona_b" as const, label: "Persona B", value: ingresosPersonaB },
+          ].map(({ key, label, value }) => {
+            const lineKey = `plan:${key}`;
+            return (
+              <PlannedAmountRow
+                key={key}
+                label={label}
+                value={value}
+                editing={editingPlanLine === lineKey}
+                editValue={planLineDraft}
+                deleteConfirmation={confirmDeletePlanLine === lineKey}
+                saving={savingPlanLine}
+                onStartEdit={() => startEditPlanLine(lineKey, value)}
+                onEditValueChange={setPlanLineDraft}
+                onConfirmEdit={() => handleSavePlanLine(lineKey)}
+                onCancelEdit={() => setEditingPlanLine(null)}
+                onRequestDelete={() => setConfirmDeletePlanLine(lineKey)}
+                onConfirmDelete={() => handleDeletePlanLine(lineKey)}
+                onCancelDelete={() => setConfirmDeletePlanLine(null)}
+              />
+            );
+          })}
         </div>
       </Card>
 
-      {/* Ingresos personales — editable */}
+      {/* Ingresos personales */}
       <Card>
         <SectionHeader title="Ingresos personales" />
         <div className="space-y-2">
           {[
-            { label: "Persona A", value: personalPersonaA, setter: setPersonalPersonaA },
-            { label: "Persona B", value: personalPersonaB, setter: setPersonalPersonaB },
-          ].map(({ label, value, setter }) => (
-            <div key={label} className="flex items-center justify-between gap-4">
-              <span className="text-sm text-gray-700 w-20">{label}</span>
-              <MoneyInput value={value} onValueChange={setter} className="flex-1 max-w-48" />
-            </div>
-          ))}
+            { key: "cuenta_personal_a" as const, label: "Persona A", value: personalPersonaA },
+            { key: "cuenta_personal_b" as const, label: "Persona B", value: personalPersonaB },
+          ].map(({ key, label, value }) => {
+            const lineKey = `plan:${key}`;
+            return (
+              <PlannedAmountRow
+                key={key}
+                label={label}
+                value={value}
+                editing={editingPlanLine === lineKey}
+                editValue={planLineDraft}
+                deleteConfirmation={confirmDeletePlanLine === lineKey}
+                saving={savingPlanLine}
+                onStartEdit={() => startEditPlanLine(lineKey, value)}
+                onEditValueChange={setPlanLineDraft}
+                onConfirmEdit={() => handleSavePlanLine(lineKey)}
+                onCancelEdit={() => setEditingPlanLine(null)}
+                onRequestDelete={() => setConfirmDeletePlanLine(lineKey)}
+                onConfirmDelete={() => handleDeletePlanLine(lineKey)}
+                onCancelDelete={() => setConfirmDeletePlanLine(null)}
+              />
+            );
+          })}
         </div>
       </Card>
 
@@ -465,7 +692,12 @@ function PlanTab({ data, year, month }: PlanTabProps) {
 
                 {/* Inline edit panel */}
                 {editingFijoId === item.id && (
-                  <div className="mb-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3 space-y-3">
+                  <ExpenseEditPanel
+                    saving={savingEdit}
+                    onCancel={() => setEditingFijoId(null)}
+                    onConfirm={handleSaveEditFijo}
+                    disabled={!editDraft.concepto.trim()}
+                  >
                     <select
                       value={editDraft.concepto}
                       onChange={(e) => setEditDraft((p) => ({ ...p, concepto: e.target.value }))}
@@ -560,22 +792,7 @@ function PlanTab({ data, year, month }: PlanTabProps) {
                       Añadir tramo
                     </button>
 
-                    <div className="flex gap-2 justify-end">
-                      <button
-                        onClick={() => setEditingFijoId(null)}
-                        className="px-3 py-1.5 text-sm rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        onClick={handleSaveEditFijo}
-                        disabled={!editDraft.concepto.trim() || savingEdit}
-                        className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors"
-                      >
-                        {savingEdit ? "Guardando…" : "Confirmar"}
-                      </button>
-                    </div>
-                  </div>
+                  </ExpenseEditPanel>
                 )}
               </div>
             );
@@ -715,16 +932,20 @@ function PlanTab({ data, year, month }: PlanTabProps) {
               <button
                 onClick={handleAddFijo}
                 disabled={!newFijoCategoria || !newFijoSubcategoria || addingFijo}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors"
+                className={clsx("flex items-center gap-1.5", CONFIRM_BUTTON_CLASS)}
               >
                 <Plus size={14} />
-                {addingFijo ? "Añadiendo…" : "Añadir"}
+                {addingFijo ? "Guardando…" : "Confirmar"}
               </button>
             </div>
           </div>
         ) : (
           <button
-            onClick={() => { setShowNewFijo(true); setEditingFijoId(null); }}
+            onClick={() => {
+              setShowNewFijo(true);
+              setEditingFijoId(null);
+              setEditingPlanLine(null);
+            }}
             className="mt-3 pt-3 border-t border-gray-100 w-full flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 transition-colors"
           >
             <Plus size={13} />
@@ -742,16 +963,27 @@ function PlanTab({ data, year, month }: PlanTabProps) {
       <Card>
         <SectionHeader title="Gastos variables" />
         <div className="space-y-2">
-          {categorias.map((cat, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <span className="text-sm text-gray-700 flex-1 truncate">{cat.nombre}</span>
-              <MoneyInput
+          {categorias.map((cat) => {
+            const lineKey = `variable:${cat.nombre}`;
+            return (
+              <PlannedAmountRow
+                key={cat.nombre}
+                label={cat.nombre}
                 value={cat.importe_planificado}
-                onValueChange={(value) => updateCatAmount(index, value)}
-                className="w-36"
+                editing={editingPlanLine === lineKey}
+                editValue={planLineDraft}
+                deleteConfirmation={confirmDeletePlanLine === lineKey}
+                saving={savingPlanLine}
+                onStartEdit={() => startEditPlanLine(lineKey, cat.importe_planificado)}
+                onEditValueChange={setPlanLineDraft}
+                onConfirmEdit={() => handleSavePlanLine(lineKey)}
+                onCancelEdit={() => setEditingPlanLine(null)}
+                onRequestDelete={() => setConfirmDeletePlanLine(lineKey)}
+                onConfirmDelete={() => handleDeletePlanLine(lineKey)}
+                onCancelDelete={() => setConfirmDeletePlanLine(null)}
               />
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {showNewVariable ? (
@@ -788,10 +1020,11 @@ function PlanTab({ data, year, month }: PlanTabProps) {
               </button>
               <button
                 onClick={handleAddVariableCategory}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                disabled={saving}
+                className={clsx("flex items-center gap-1.5", CONFIRM_BUTTON_CLASS)}
               >
                 <Plus size={14} />
-                Añadir
+                {saving ? "Guardando…" : "Confirmar"}
               </button>
             </div>
           </div>
@@ -800,6 +1033,7 @@ function PlanTab({ data, year, month }: PlanTabProps) {
             onClick={() => {
               setShowNewVariable(true);
               setEditingFijoId(null);
+              setEditingPlanLine(null);
             }}
             className="mt-3 pt-3 border-t border-gray-100 w-full flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 transition-colors"
           >
@@ -843,14 +1077,6 @@ function PlanTab({ data, year, month }: PlanTabProps) {
         </div>
       </Card>
 
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-      >
-        <Save size={16} />
-        {saving ? "Guardando…" : "Guardar planificación"}
-      </button>
     </div>
   );
 }
@@ -859,16 +1085,15 @@ interface ExecRowProps {
   label: string;
   plan: number;
   real: number;
-  colorScheme?: "income" | "expense" | "saving";
+  differenceDirection?: "plan-minus-real" | "real-minus-plan";
   bold?: boolean;
   expanded?: boolean;
   onToggle?: () => void;
 }
 
-function ExecRow({ label, plan, real, colorScheme = "expense", bold = false, expanded = false, onToggle }: ExecRowProps) {
-  const diff = real - plan;
-  const isGood = colorScheme === "income" || colorScheme === "saving" ? diff >= 0 : diff <= 0;
-  const diffColor = diff === 0 ? "text-gray-400" : isGood ? "text-green-600" : "text-red-500";
+function ExecRow({ label, plan, real, differenceDirection = "plan-minus-real", bold = false, expanded = false, onToggle }: ExecRowProps) {
+  const diff = differenceDirection === "real-minus-plan" ? real - plan : plan - real;
+  const diffColor = diff === 0 ? "text-gray-400" : diff > 0 ? "text-green-600" : "text-red-500";
 
   return (
     <tr className={clsx("border-b border-gray-50", bold && "bg-gray-50")}>
@@ -897,9 +1122,19 @@ interface ExecDetailRowProps {
   label: string;
   plan?: number;
   real?: number;
+  differenceDirection?: "plan-minus-real" | "real-minus-plan";
 }
 
-function ExecDetailRow({ label, plan, real }: ExecDetailRowProps) {
+function ExecDetailRow({ label, plan, real, differenceDirection = "plan-minus-real" }: ExecDetailRowProps) {
+  const diff = plan !== undefined && real !== undefined
+    ? differenceDirection === "real-minus-plan" ? real - plan : plan - real
+    : undefined;
+  const diffColor = diff === undefined || diff === 0
+    ? "text-gray-400"
+    : diff > 0
+      ? "text-green-600"
+      : "text-red-500";
+
   return (
     <tr className="border-b border-gray-50 bg-gray-50/70">
       <td className="py-2 px-4 pl-10 text-sm text-gray-600">{label}</td>
@@ -909,7 +1144,9 @@ function ExecDetailRow({ label, plan, real }: ExecDetailRowProps) {
       <td className="py-2 px-4 text-right text-sm tabular-nums text-gray-700">
         {real === undefined ? "" : formatCurrency(real)}
       </td>
-      <td className="py-2 px-4" />
+      <td className={clsx("py-2 px-4 text-right text-sm tabular-nums font-medium", diffColor)}>
+        {diff === undefined ? "" : diff === 0 ? "—" : `${diff > 0 ? "+" : ""}${formatCurrency(diff)}`}
+      </td>
     </tr>
   );
 }
@@ -928,9 +1165,18 @@ function ExecTab({ data }: ExecTabProps) {
     + data.total_gastos_fijos_plan
     + data.total_gastos_variables_plan
   );
-  const gastosTransaccionesReales = data.total_gastos_reales - data.total_cuentas_personales_plan;
+  const gastosFijosReales = data.gastos_fijos.reduce(
+    (total, expense) => total + expense.importe_real,
+    0,
+  );
+  const gastosVariablesReales = data.gastos_reales_por_categoria.reduce(
+    (total, category) => total + category.importe_real,
+    0,
+  );
 
-  const fixedExpenses = data.gastos_fijos.filter((expense) => expense.importe_planificado > 0);
+  const fixedExpenses = data.gastos_fijos.filter(
+    (expense) => expense.importe_planificado > 0 || expense.importe_real > 0,
+  );
   return (
     <div className="space-y-5">
       {/* Summary table */}
@@ -959,7 +1205,7 @@ function ExecTab({ data }: ExecTabProps) {
                 label="Ingresos"
                 plan={data.ingresos_persona_a + data.ingresos_persona_b}
                 real={data.ingresos_reales}
-                colorScheme="income"
+                differenceDirection="real-minus-plan"
                 expanded={showIncomeDetail}
                 onToggle={() => setShowIncomeDetail((visible) => !visible)}
               />
@@ -969,6 +1215,7 @@ function ExecTab({ data }: ExecTabProps) {
                     label="Nóminas"
                     plan={data.ingresos_persona_a + data.ingresos_persona_b}
                     real={data.ingresos_nomina}
+                    differenceDirection="real-minus-plan"
                   />
                   {data.ingresos_otros !== 0 && (
                     <ExecDetailRow
@@ -982,13 +1229,11 @@ function ExecTab({ data }: ExecTabProps) {
                 label="Asignaciones personales"
                 plan={data.total_cuentas_personales_plan}
                 real={data.total_cuentas_personales_plan}
-                colorScheme="expense"
               />
               <ExecRow
                 label="Gastos fijos"
                 plan={data.total_gastos_fijos_plan}
-                real={0}
-                colorScheme="expense"
+                real={gastosFijosReales}
                 expanded={showFixedDetail}
                 onToggle={() => setShowFixedDetail((visible) => !visible)}
               />
@@ -998,6 +1243,7 @@ function ExecTab({ data }: ExecTabProps) {
                     key={expense.id ?? `${expense.categoria}-${expense.nombre}`}
                     label={expense.nombre}
                     plan={expense.importe_planificado}
+                    real={expense.importe_real}
                   />
                 )) : (
                   <ExecDetailRow label="Sin gastos fijos planificados" />
@@ -1006,8 +1252,7 @@ function ExecTab({ data }: ExecTabProps) {
               <ExecRow
                 label="Gastos variables"
                 plan={data.total_gastos_variables_plan}
-                real={gastosTransaccionesReales}
-                colorScheme="expense"
+                real={gastosVariablesReales}
                 expanded={showVariableDetail}
                 onToggle={() => setShowVariableDetail((visible) => !visible)}
               />
@@ -1026,14 +1271,13 @@ function ExecTab({ data }: ExecTabProps) {
                 label="Total gastos"
                 plan={totalGastosPlan}
                 real={data.total_gastos_reales}
-                colorScheme="expense"
                 bold
               />
               <ExecRow
                 label="Ahorro"
                 plan={data.ahorro_estimado}
                 real={data.ahorro_real}
-                colorScheme="saving"
+                differenceDirection="real-minus-plan"
                 bold
               />
             </tbody>
@@ -1062,6 +1306,10 @@ export default function Forecast({ mode }: { mode: ForecastMode }) {
   const [forecastMinMonth, setForecastMinMonth] = useState(currentMonth);
   const [balanceMaxYear, setBalanceMaxYear] = useState(currentYear);
   const [balanceMaxMonth, setBalanceMaxMonth] = useState(currentMonth);
+  const [confirmingClose, setConfirmingClose] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["forecast", year, month],
@@ -1085,8 +1333,8 @@ export default function Forecast({ mode }: { mode: ForecastMode }) {
       const [previousYear, previousMonthNumber] = prevMonth(currentYear, currentMonth);
       setYear(previousYear);
       setMonth(previousMonthNumber);
-      setBalanceMaxYear(previousYear);
-      setBalanceMaxMonth(previousMonthNumber);
+      setBalanceMaxYear(currentYear);
+      setBalanceMaxMonth(currentMonth);
     } else {
       setBalanceMaxYear(currentYear);
       setBalanceMaxMonth(currentMonth);
@@ -1105,10 +1353,26 @@ export default function Forecast({ mode }: { mode: ForecastMode }) {
     setMonth(m);
   }
 
+  async function handleCloseMonth() {
+    setClosing(true);
+    setCloseError(null);
+    try {
+      await api.forecast.close(year, month);
+      await queryClient.invalidateQueries({ queryKey: ["forecast", year, month] });
+      setConfirmingClose(false);
+    } catch (error) {
+      setCloseError(error instanceof Error ? error.message : "No se pudo cerrar el mes");
+    } finally {
+      setClosing(false);
+    }
+  }
+
   const isFirstForecastMonth =
     mode === "forecast" && year === forecastMinYear && month === forecastMinMonth;
   const isLastBalanceMonth =
     mode === "balance" && year === balanceMaxYear && month === balanceMaxMonth;
+  const isPastMonth = year < currentYear || (year === currentYear && month < currentMonth);
+  const canCloseMonth = mode === "balance" && isPastMonth && !data?.balance_cerrado;
 
   if (isLoading) {
     return (
@@ -1168,7 +1432,47 @@ export default function Forecast({ mode }: { mode: ForecastMode }) {
         data.balance_cerrado ? (
           <ExecTab data={data} />
         ) : (
-          <p className="py-12 text-center text-sm text-gray-500">Este mes todavía no está cerrado.</p>
+          <div className="space-y-4 py-12 text-center">
+            <p className="text-sm text-gray-500">Este mes todavía no está cerrado.</p>
+            {canCloseMonth && data.plan_guardado && (
+              <div className="max-w-md mx-auto rounded-lg border border-amber-200 bg-amber-50 p-4 text-left space-y-3">
+                <p className="text-sm text-amber-900">
+                  El cierre congela la planificación. Los importes reales seguirán calculándose desde los movimientos y su categoría actual.
+                </p>
+                {closeError && <p role="alert" className="text-sm text-red-600">{closeError}</p>}
+                {confirmingClose ? (
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => { setConfirmingClose(false); setCloseError(null); }}
+                      disabled={closing}
+                      className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 disabled:opacity-50"
+                    >
+                      <X size={15} />Cancelar
+                    </button>
+                    <button
+                      onClick={handleCloseMonth}
+                      disabled={closing}
+                      className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                    >
+                      <Check size={15} />{closing ? "Cerrando…" : "Confirmar cierre"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => setConfirmingClose(true)}
+                      className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white"
+                    >
+                      <Lock size={15} />Cerrar mes
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            {canCloseMonth && !data.plan_guardado && (
+              <p className="text-sm text-amber-700">Guarda la planificación antes de cerrar este mes.</p>
+            )}
+          </div>
         )
       )}
     </div>

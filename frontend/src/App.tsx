@@ -30,8 +30,8 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/categories" element={<Categories />} />
-          <Route path="/forecast" element={<Forecast mode="forecast" />} />
-          <Route path="/balance" element={<Forecast mode="balance" />} />
+          <Route path="/forecast" element={<Forecast key="forecast" mode="forecast" />} />
+          <Route path="/balance" element={<Forecast key="balance" mode="balance" />} />
         </Routes>
       </main>
 

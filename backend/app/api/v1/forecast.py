@@ -621,14 +621,10 @@ def upsert_forecast(
         normalize_fixed_category_name(cat.nombre): Decimal(str(cat.importe_planificado))
         for cat in body.categorias
     }
-    parent_categories = (
-        db.query(Category)
-        .filter(Category.padre_id.is_(None))
-        .all()
-    )
+    available_categories = db.query(Category).all()
     categories_by_name = {
         normalize_fixed_category_name(category.nombre): category
-        for category in parent_categories
+        for category in available_categories
     }
     missing_categories = incoming_budget_map.keys() - categories_by_name.keys()
     if missing_categories:
@@ -648,6 +644,54 @@ def upsert_forecast(
             categoria_id=categories_by_name[category_name].id,
             importe_planificado=amount,
         ))
+
+    if body.propagar_campos:
+        field_attributes = {
+            "cuenta_personal_a": "cuenta_personal_a",
+            "cuenta_personal_b": "cuenta_personal_b",
+            "ingresos_persona_a": "ingresos_planificados_a",
+            "ingresos_persona_b": "ingresos_planificados_b",
+        }
+        future_plans = (
+            db.query(ForecastPlan)
+            .filter(
+                ForecastPlan.guardado == True,  # noqa: E712
+                or_(
+                    ForecastPlan.anio > year,
+                    and_(ForecastPlan.anio == year, ForecastPlan.mes > month),
+                ),
+            )
+            .all()
+        )
+        closed_future_months = {
+            (snapshot.anio, snapshot.mes)
+            for snapshot in db.query(MonthlyBalancePlan)
+            .filter(
+                or_(
+                    MonthlyBalancePlan.anio > year,
+                    and_(MonthlyBalancePlan.anio == year, MonthlyBalancePlan.mes > month),
+                )
+            )
+            .all()
+        }
+        for future_plan in future_plans:
+            if (future_plan.anio, future_plan.mes) in closed_future_months:
+                continue
+            income_fields_changed = False
+            for field in body.propagar_campos:
+                attribute = field_attributes[field]
+                setattr(future_plan, attribute, getattr(plan, attribute))
+                if field.startswith("ingresos_persona_"):
+                    income_fields_changed = True
+            if (
+                income_fields_changed
+                and future_plan.ingresos_planificados_a is not None
+                and future_plan.ingresos_planificados_b is not None
+            ):
+                future_plan.ingresos_planificados = (
+                    future_plan.ingresos_planificados_a
+                    + future_plan.ingresos_planificados_b
+                )
 
     db.commit()
     db.refresh(plan)

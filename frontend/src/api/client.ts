@@ -97,6 +97,8 @@ export const api = {
     get: (year: number, month: number) => get<ForecastData>(`/forecast/${year}/${month}`),
     save: (year: number, month: number, body: ForecastPlanUpdate) =>
       put<ForecastData>(`/forecast/${year}/${month}`, body),
+    close: (year: number, month: number) =>
+      post<ForecastData>(`/forecast/${year}/${month}/close`),
   },
   recurringExpenses: {
     create: (body: RecurringExpenseCreate) => post<RecurringExpenseOut>("/recurring-expenses/", body),

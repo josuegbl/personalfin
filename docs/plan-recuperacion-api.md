@@ -53,6 +53,7 @@ La API se alineó con el esquema normalizado de PostgreSQL. Como el release de l
 - Forecast GET/PUT obtiene nombres desde la relación por ID y rechaza presupuestos para categorías padre inexistentes. Renombrar categorías ya no actualiza columnas de texto retiradas; los IDs mantienen las asociaciones y la subcategoría renombrada sincroniza el concepto de sus recurrentes.
 - Se eliminó Mounjaro (ID 52) porque no debe ser recurrente. Comisión tarjeta (ID 32) se conservó y enlazó con la categoría existente `Comisiones` (ID 97, padre `Otros`).
 - Los recurrentes Amazon (ID 48), Disney (49), HBO (50) y Office (51) se reasignaron a Amazon Prime (categoría 51), Disney+ (38), HBO Max (81) y Microsoft 365 (52). Se eliminaron las categorías antiguas Amazon/Disney/HBO/Office (IDs 106–109) después de comprobar que no tenían movimientos, presupuestos ni balances asociados y mover sus referencias recurrentes. No quedan referencias FK a esos IDs.
+- Se eliminaron también las cinco categorías sin movimientos ni referencias: Colegios (118), Amazon (119), Disney (120), HBO (121) y Office (122). Se retiraron `Colegios` y los nombres antiguos de `FIXED_CATEGORY_NAMES`/`SUBSCRIPTION_DEFAULT_CONCEPTS`, reemplazando estos últimos por Amazon Prime, Disney+, HBO Max y Microsoft 365, para que el startup no las recree. `Sin categoría` (ID 20, `sin_categoria`) se conservó. Los padres sin movimientos directos se mantienen cuando tienen subcategorías o referencias activas.
 - La auditoría global encontró solo un concepto repetido con vigencias solapadas: Deportes (IDs 55 y 112). Para conservar el histórico, el ID 55 mantiene su fin el 31/08/2026 y el ID 112 empieza el 01/09/2026. Forecast ahora filtra recurrentes por solape de fechas con el mes consultado.
 - Se tomó un backup preoperación en `%TEMP%\bankfinances-pre-recurrent-cleanup-20261025.dump`; SHA-256 `67e3a09e8a76a235bb4b1dd4ec801b0c316290e8d95fb145deadc8f6fe28e71a`.
 - Antes de fusionar categorías se tomó `%TEMP%\bankfinances-pre-category-merge-20261025.dump`; SHA-256 `18c3c711c03f881b9e7f0a1b59b2b864e1f8d1ddc8b016693e8d9c3c66e1ba46`.
@@ -62,7 +63,7 @@ La API se alineó con el esquema normalizado de PostgreSQL. Como el release de l
 - En `bankfinances_phase0_staging`, restaurada desde el backup: startup y `/openapi.json` responden 200; Forecast GET y PUT pasan; el PUT persiste y recupera un presupuesto por `categoria_id`.
 - En staging también pasan create/update/delete de gastos recurrentes, y renombres/restauración de categorías padre e hija con la etiqueta nueva visible en Forecast.
 - `python -m compileall -q app` termina correctamente y VS Code no reporta errores en los archivos modificados.
-- La API activa en `localhost:8000` responde a `/openapi.json` y Forecast GET tras hot reload. Tras la limpieza, la DB original mantiene 67 categorías, 42 recurrentes y 18 presupuestos; no quedan recurrentes sin `subcategoria_id`, referencias a las cuatro categorías eliminadas ni pares de conceptos normalizados con vigencias solapadas.
+- La API activa en `localhost:8000` responde a `/openapi.json` y Forecast GET tras hot reload. Tras la limpieza, la DB original mantiene 66 categorías, 42 recurrentes, 891 movimientos y 18 presupuestos; no quedan recurrentes sin `subcategoria_id`, referencias a las nueve categorías eliminadas ni pares de conceptos normalizados con vigencias solapadas.
 - Forecast muestra Deportes ID 55/70 € en abril y Deportes ID 112/30 € en octubre. `python -m compileall -q app` termina correctamente.
 
 ### Rebaseline aplicado
@@ -72,18 +73,31 @@ La API se alineó con el esquema normalizado de PostgreSQL. Como el release de l
 - En la DB original, `alembic stamp --purge bcd5f4f582de` actualizó únicamente `alembic_version`; no ejecutó DDL ni modificó datos.
 - Resultado: `alembic current` y `alembic heads` muestran `bcd5f4f582de`; `alembic check` no encuentra diferencias.
 
+### Fase 5: Cierre explícito y snapshots solo de planificación
+
+- La decisión funcional es guardar solo planificación en el snapshot; los reales se recalculan desde movimientos por `categoria_id`. Una reclasificación posterior mueve el real, pero no altera los importes planificados congelados.
+- Se creó `POST /api/v1/forecast/{year}/{month}/close`: requiere mes terminado, plan guardado y ausencia de snapshot; un segundo cierre devuelve 409. El snapshot guarda cabecera de ingresos/asignaciones y líneas fijas/variables con ID. Usa los reales actuales únicamente para omitir líneas donde plan y real sean ambos cero; no persiste reales.
+- Se normalizó `monthly_balance_category_plans` por IDs: se eliminó `categoria_nombre`, las variables usan `categoria_id` y `nombre=NULL`, y las líneas fijas conservan `nombre` como concepto. Los índices únicos separan línea fija por `(snapshot,categoria_id,nombre)`, variable por `(snapshot,categoria_id)` y personas por `(snapshot,tipo,nombre)`.
+- GET de un mes cerrado lee la planificación exclusivamente del snapshot; los reales continúan siendo dinámicos. Plan guardado y snapshots antiguos se conservan; las líneas existentes no se reconstruyen ni se recalculan.
+- Balance ofrece confirmación de cierre solo para meses terminados, abiertos y con plan guardado. Tras cerrar, invalida/refresca el mes. Previsión sigue usando el primer mes no cerrado.
+- Migraciones aplicadas desde la baseline activa: `25e7653fa67d` (snapshot por IDs) y `bde8c256c796` (restricciones por ID). La DB original quedó en `bde8c256c796`.
+- Prueba en clon restaurado: cierre de noviembre creó el snapshot; segunda llamada devolvió 409; un movimiento de Netflix reclasificado después pasó su real a Alimentación, mientras el plan de Netflix siguió intacto. Las líneas cero-cero se omitieron y no se persistió importe real.
+- Guards verificados contra la DB original: octubre ya cerrado devuelve 409 y noviembre futuro devuelve 400. Backend/frontend desplegados en Docker local; contenedores activos, OpenAPI 200 y se sirve el botón de cierre.
+- Backup previo a estas migraciones: `%TEMP%\bankfinances-pre-month-close-20261025.dump`; SHA-256 `a3edf8df9169ce154cd39d69f30888d965f610c6a08bf3b855928f9e55694989`.
+
 ### Fase 4: Validación y recuperación
 
-**Resultado:** completada. En una DB vacía, `alembic upgrade head` creó el esquema; el startup/seed completó, `/openapi.json` y Forecast GET respondieron 200, y `alembic check` junto con la comparación de metadata dieron cero diferencias. En un clon restaurado, `stamp --purge` dejó `bcd5f4f582de`, preservó los recuentos y pasó `current`/`check`. El mismo stamp se aplicó después a la DB original.
+**Resultado:** completada. En una DB vacía, `alembic upgrade head` creó el esquema; el startup/seed completó, `/openapi.json` y Forecast GET respondieron 200, y `alembic check` junto con la comparación de metadata dieron cero diferencias. El clon restaurado y la DB original avanzaron desde `bcd5f4f582de` hasta `bde8c256c796`; se preservaron los datos y `current`/`heads`/`check` pasan.
 
 ## Verificación de salida
 
-- La DB original está en `bcd5f4f582de`; `alembic current`, `alembic history --verbose` y `alembic heads` usan un único head.
+- La DB original está en `bde8c256c796`; `alembic current`, `alembic history --verbose` y `alembic heads` usan un único head.
 - `alembic upgrade head` funciona en una DB vacía; `alembic check` y el comparador de metadata no detectan diferencias.
 - `alembic check` y `python -m compileall -q app` terminan correctamente.
 - FastAPI inicia sin `UndefinedColumn` y responde a `/openapi.json`.
 - Se prueban Forecast GET/PUT, creación/edición/borrado de gastos recurrentes y renombrado de categorías.
 - Se revisan los logs y el estado del contenedor después del despliegue.
+- Para el cierre explícito, verificar doble cierre, mes futuro, plan no guardado, línea plan-only, línea con gasto no presupuestado, filtro cero-cero y reclasificación post-cierre.
 
 ## Riesgos y límites
 

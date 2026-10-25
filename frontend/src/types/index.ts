@@ -128,6 +128,7 @@ export interface RecurringExpenseOut {
 export interface ForecastCategoryItem {
   id?: number;           // Present for gastos_fijos (RecurringExpense.id)
   categoria?: string | null;
+  categoria_id?: number | null;
   nombre: string;
   importe_planificado: number;
   importe_real: number;
@@ -152,6 +153,7 @@ export interface ForecastPlanUpdate {
   ingresos_persona_a: number;
   ingresos_persona_b: number;
   categorias: ForecastCategoryInput[];
+  propagar_campos?: Array<"cuenta_personal_a" | "cuenta_personal_b" | "ingresos_persona_a" | "ingresos_persona_b">;
 }
 
 export interface ForecastData {
@@ -159,6 +161,7 @@ export interface ForecastData {
   mes: number;
   es_ejecucion: boolean;
   balance_cerrado: boolean;
+  plan_guardado: boolean;
   cuenta_personal_a: number;
   cuenta_personal_b: number;
   ingresos_planificados: number | null;

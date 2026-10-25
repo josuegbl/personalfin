@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
 class FixedExpenseTier(BaseModel):
@@ -46,6 +48,12 @@ class ForecastPlanUpdate(BaseModel):
     ingresos_persona_a: float
     ingresos_persona_b: float
     categorias: list[ForecastCategoryInput]
+    propagar_campos: list[Literal[
+      "cuenta_personal_a",
+      "cuenta_personal_b",
+      "ingresos_persona_a",
+      "ingresos_persona_b",
+    ]] = Field(default_factory=list)
 
 
 class ForecastResponse(BaseModel):
