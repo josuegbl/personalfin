@@ -28,7 +28,7 @@ def _load(expense_id: int, db: Session) -> RecurringExpense:
         db.query(RecurringExpense)
         .options(
             selectinload(RecurringExpense.tiers),
-            selectinload(RecurringExpense.subcategoria),
+            selectinload(RecurringExpense.subcategoria).selectinload(Category.parent),
         )
         .filter(RecurringExpense.id == expense_id)
         .first()
@@ -126,7 +126,6 @@ def create_recurring_expense(body: RecurringExpenseCreate, db: Session = Depends
 
     expense = RecurringExpense(
         concepto=subcategory.nombre,
-        categoria=parent.nombre,
         subcategoria_id=subcategory.id,
         importe=Decimal("0"),
         tipo="fijo",
@@ -163,7 +162,6 @@ def update_recurring_expense(expense_id: int, body: RecurringExpenseUpdate, db: 
     subcategory = _get_subcategory(parent, body.concepto, db)
 
     expense.concepto = subcategory.nombre
-    expense.categoria = parent.nombre
     expense.subcategoria_id = subcategory.id
     _replace_tiers(expense, body.tiers, db)
     db.commit()

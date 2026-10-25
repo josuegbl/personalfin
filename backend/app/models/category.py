@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String, Integer, ForeignKey
+from sqlalchemy import String, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
@@ -10,6 +10,9 @@ if TYPE_CHECKING:
 
 class Category(Base):
     __tablename__ = "categories"
+    __table_args__ = (
+        UniqueConstraint("codigo_sistema", name="uq_categories_codigo_sistema"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     nombre: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
@@ -19,6 +22,7 @@ class Category(Base):
     es_compartida_por_defecto: Mapped[bool] = mapped_column(default=False)
     naturaleza: Mapped[str] = mapped_column(String(20), default="gasto")
     incluida_en_analisis: Mapped[bool] = mapped_column(default=True)
+    codigo_sistema: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     parent: Mapped["Category | None"] = relationship(
         "Category",

@@ -4,7 +4,10 @@ Uso: python -m app.seed
 """
 from decimal import Decimal
 
+from sqlalchemy.orm import Session
+
 from app.core.database import SessionLocal
+from app.core.category_catalog import CATEGORY_CODE_NOMINA, CATEGORY_CODE_SIN_CATEGORIA
 from app.core.forecast_catalog import FIXED_CATEGORY_NAMES, SUBSCRIPTION_DEFAULT_CONCEPTS, normalize_fixed_category_name
 from app.models.category import Category
 from app.models.recurring_expense import RecurringExpense, RecurringExpenseTier
@@ -22,10 +25,10 @@ CATEGORIES = [
     {"nombre": "Educación",              "icono": "📚", "color": "#3b82f6"},
     {"nombre": "Seguros",                "icono": "🛡️", "color": "#0ea5e9"},
     {"nombre": "Impuestos",              "icono": "🏛️", "color": "#64748b"},
-    {"nombre": "Nómina",                 "icono": "💰", "color": "#10b981", "naturaleza": "ingreso"},
+    {"nombre": "Nómina",                 "icono": "💰", "color": "#10b981", "naturaleza": "ingreso", "codigo_sistema": CATEGORY_CODE_NOMINA},
     {"nombre": "Transferencias",         "icono": "↔️", "color": "#94a3b8", "naturaleza": "transferencia", "incluida_en_analisis": True},
     {"nombre": "Transferencias Internas", "icono": "↔️", "color": "#94a3b8", "naturaleza": "transferencia", "incluida_en_analisis": True},
-    {"nombre": "Sin categoría",         "icono": "?",  "color": "#94a3b8", "naturaleza": "neutral", "incluida_en_analisis": True},
+    {"nombre": "Sin categoría",         "icono": "?",  "color": "#94a3b8", "naturaleza": "neutral", "incluida_en_analisis": True, "codigo_sistema": CATEGORY_CODE_SIN_CATEGORIA},
     {"nombre": "Suscripciones",          "icono": "📱", "color": "#8b5cf6"},
     {"nombre": "Préstamos",              "icono": "🏦", "color": "#dc2626"},
     {"nombre": "Tarjeta Credito",        "icono": "💳", "color": "#dc2626"},
@@ -207,6 +210,34 @@ RECURRING_EXPENSES = [
 ]
 
 
+def recurring_expense_category_id(db: Session, parent_name: str, concept: str) -> int:
+    normalized_parent = normalize_fixed_category_name(parent_name)
+    parent = (
+        db.query(Category)
+        .filter(Category.nombre == normalized_parent, Category.padre_id.is_(None))
+        .first()
+    )
+    if parent is None:
+        raise ValueError(f"Categoría padre no encontrada para gasto recurrente: {normalized_parent}")
+
+    subcategory = (
+        db.query(Category)
+        .filter(Category.nombre == concept, Category.padre_id == parent.id)
+        .first()
+    )
+    return subcategory.id if subcategory is not None else parent.id
+
+
+def ensure_category_system_codes(db: Session) -> None:
+    for name, code in (
+        ("Nómina", CATEGORY_CODE_NOMINA),
+        ("Sin categoría", CATEGORY_CODE_SIN_CATEGORIA),
+    ):
+        category = db.query(Category).filter(Category.nombre == name).first()
+        if category is not None and category.codigo_sistema != code:
+            category.codigo_sistema = code
+
+
 def seed():
     """Populate the database with default categories and recurring expenses.
 
@@ -224,7 +255,13 @@ def seed():
         if db.query(RecurringExpense).count() == 0:
             for data in RECURRING_EXPENSES:
                 tiers_data = data["tiers"]
-                expense_data = {k: v for k, v in data.items() if k != "tiers"}
+                parent_name = data["categoria"]
+                expense_data = {
+                    k: v for k, v in data.items() if k not in {"tiers", "categoria"}
+                }
+                expense_data["subcategoria_id"] = recurring_expense_category_id(
+                    db, parent_name, data["concepto"]
+                )
                 expense = RecurringExpense(**expense_data, importe=Decimal("0"))
                 db.add(expense)
                 db.flush()
@@ -235,6 +272,7 @@ def seed():
                         meses=tier["meses"],
                     ))
 
+        ensure_category_system_codes(db)
         db.commit()
         print("Seed completado.")
     finally:
@@ -298,7 +336,6 @@ def ensure_forecast_catalog() -> None:
                 if recurring is None:
                     recurring = RecurringExpense(
                         concepto=concept,
-                        categoria="Suscripciones",
                         subcategoria_id=subcategory.id,
                         importe=Decimal("0"),
                         tipo="fijo",

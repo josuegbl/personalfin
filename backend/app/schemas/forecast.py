@@ -61,6 +61,7 @@ class ForecastResponse(BaseModel):
     anio: int
     mes: int
     es_ejecucion: bool
+    balance_cerrado: bool
 
     # Personal budget allocations; treated as a separate expense in execution.
     cuenta_personal_a: float

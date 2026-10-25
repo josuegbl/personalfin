@@ -158,6 +158,7 @@ export interface ForecastData {
   anio: number;
   mes: number;
   es_ejecucion: boolean;
+  balance_cerrado: boolean;
   cuenta_personal_a: number;
   cuenta_personal_b: number;
   ingresos_planificados: number | null;

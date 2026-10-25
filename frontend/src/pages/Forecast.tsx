@@ -11,7 +11,7 @@ const MONTH_NAMES = [
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ];
 
-type Tab = "plan" | "exec";
+type ForecastMode = "forecast" | "balance";
 
 function nextMonth(year: number, month: number): [number, number] {
   return month === 12 ? [year + 1, 1] : [year, month + 1];
@@ -92,10 +92,9 @@ interface PlanTabProps {
   data: ForecastData;
   year: number;
   month: number;
-  onSaved: () => void;
 }
 
-function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
+function PlanTab({ data, year, month }: PlanTabProps) {
   const qc = useQueryClient();
   const { data: allCategories } = useQuery({
     queryKey: ["categories"],
@@ -357,7 +356,6 @@ function PlanTab({ data, year, month, onSaved }: PlanTabProps) {
         categorias: categorias.map((c) => ({ nombre: c.nombre, importe_planificado: parseAmount(c.importe_planificado) })),
       });
       qc.invalidateQueries({ queryKey: ["forecast", year, month] });
-      onSaved();
     } finally {
       setSaving(false);
     }
@@ -1053,22 +1051,47 @@ function ExecTab({ data }: ExecTabProps) {
   );
 }
 
-export default function Forecast() {
+export default function Forecast({ mode }: { mode: ForecastMode }) {
   const today = new Date();
-  const [year, setYear] = useState(() => {
-    const [y] = nextMonth(today.getFullYear(), today.getMonth() + 1);
-    return y;
-  });
-  const [month, setMonth] = useState(() => {
-    const [, m] = nextMonth(today.getFullYear(), today.getMonth() + 1);
-    return m;
-  });
-  const [activeTab, setActiveTab] = useState<Tab>("plan");
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+  const [year, setYear] = useState(currentYear);
+  const [month, setMonth] = useState(currentMonth);
+  const [initialMonthResolved, setInitialMonthResolved] = useState(false);
+  const [forecastMinYear, setForecastMinYear] = useState(currentYear);
+  const [forecastMinMonth, setForecastMinMonth] = useState(currentMonth);
+  const [balanceMaxYear, setBalanceMaxYear] = useState(currentYear);
+  const [balanceMaxMonth, setBalanceMaxMonth] = useState(currentMonth);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["forecast", year, month],
     queryFn: () => api.forecast.get(year, month),
   });
+
+  useEffect(() => {
+    if (isLoading || !data || initialMonthResolved || year !== currentYear || month !== currentMonth) return;
+
+    setInitialMonthResolved(true);
+    if (mode === "forecast" && data.balance_cerrado) {
+      const [nextYear, nextMonthNumber] = nextMonth(currentYear, currentMonth);
+      setYear(nextYear);
+      setMonth(nextMonthNumber);
+      setForecastMinYear(nextYear);
+      setForecastMinMonth(nextMonthNumber);
+    } else if (mode === "forecast") {
+      setForecastMinYear(currentYear);
+      setForecastMinMonth(currentMonth);
+    } else if (!data.balance_cerrado) {
+      const [previousYear, previousMonthNumber] = prevMonth(currentYear, currentMonth);
+      setYear(previousYear);
+      setMonth(previousMonthNumber);
+      setBalanceMaxYear(previousYear);
+      setBalanceMaxMonth(previousMonthNumber);
+    } else {
+      setBalanceMaxYear(currentYear);
+      setBalanceMaxMonth(currentMonth);
+    }
+  }, [currentMonth, currentYear, data, initialMonthResolved, isLoading, mode, month, year]);
 
   function handlePrev() {
     const [y, m] = prevMonth(year, month);
@@ -1081,6 +1104,11 @@ export default function Forecast() {
     setYear(y);
     setMonth(m);
   }
+
+  const isFirstForecastMonth =
+    mode === "forecast" && year === forecastMinYear && month === forecastMinMonth;
+  const isLastBalanceMonth =
+    mode === "balance" && year === balanceMaxYear && month === balanceMaxMonth;
 
   if (isLoading) {
     return (
@@ -1099,14 +1127,19 @@ export default function Forecast() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Previsión mensual</h2>
-          <p className="text-sm text-gray-500 mt-0.5 hidden sm:block">Planifica y controla el presupuesto</p>
+          <h2 className="text-xl font-bold text-gray-900">
+            {mode === "forecast" ? "Previsión mensual" : "Balance mensual"}
+          </h2>
+          <p className="text-sm text-gray-500 mt-0.5 hidden sm:block">
+            {mode === "forecast" ? "Planifica el presupuesto" : "Consulta el resultado del mes cerrado"}
+          </p>
         </div>
 
         {/* Month selector */}
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
             onClick={handlePrev}
+            disabled={isFirstForecastMonth}
             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
           >
             <ChevronLeft size={18} />
@@ -1116,6 +1149,7 @@ export default function Forecast() {
           </span>
           <button
             onClick={handleNext}
+            disabled={isLastBalanceMonth}
             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
           >
             <ChevronRight size={18} />
@@ -1123,34 +1157,19 @@ export default function Forecast() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex rounded-xl border border-gray-200 p-1 bg-gray-50 gap-1">
-        {(["plan", "exec"] as Tab[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={clsx(
-              "flex-1 py-2 text-sm font-medium rounded-lg transition-colors",
-              activeTab === tab
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
-            )}
-          >
-            {tab === "plan" ? "Planificación" : "Ejecución"}
-          </button>
-        ))}
-      </div>
-
       {/* Content */}
-      {activeTab === "plan" ? (
+      {mode === "forecast" ? (
         <PlanTab
           data={data}
           year={year}
           month={month}
-          onSaved={() => setActiveTab("exec")}
         />
       ) : (
-        <ExecTab data={data} />
+        data.balance_cerrado ? (
+          <ExecTab data={data} />
+        ) : (
+          <p className="py-12 text-center text-sm text-gray-500">Este mes todavía no está cerrado.</p>
+        )
       )}
     </div>
   );

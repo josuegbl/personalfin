@@ -4,6 +4,7 @@ from app.models.transaction import Transaction, TransactionOrigin
 from app.models.recurring_expense import RecurringExpense, RecurringExpenseTier
 from app.models.recurring_income import RecurringIncome
 from app.models.forecast import ForecastPlan, ForecastCategoryBudget
+from app.models.monthly_balance import MonthlyBalancePlan, MonthlyBalanceCategoryPlan
 
 __all__ = [
     "Account", "AccountType",
@@ -12,4 +13,5 @@ __all__ = [
     "RecurringExpense", "RecurringExpenseTier",
     "RecurringIncome",
     "ForecastPlan", "ForecastCategoryBudget",
+    "MonthlyBalancePlan", "MonthlyBalanceCategoryPlan",
 ]

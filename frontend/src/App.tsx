@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink } from "react-router-dom";
-import { LayoutDashboard, ArrowLeftRight, Tag, TrendingUp } from "lucide-react";
+import { LayoutDashboard, ArrowLeftRight, Scale, Tag, TrendingUp } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import Categories from "./pages/Categories";
@@ -18,8 +18,9 @@ export default function App() {
         <nav className="flex-1 p-3 space-y-1">
           <NavItem to="/" icon={<LayoutDashboard size={16} />} label="Dashboard" />
           <NavItem to="/transactions" icon={<ArrowLeftRight size={16} />} label="Movimientos" />
-          <NavItem to="/categories" icon={<Tag size={16} />} label="Categorías" />
           <NavItem to="/forecast" icon={<TrendingUp size={16} />} label="Previsión" />
+          <NavItem to="/balance" icon={<Scale size={16} />} label="Balance" />
+          <NavItem to="/categories" icon={<Tag size={16} />} label="Categorías" />
         </nav>
       </aside>
 
@@ -29,7 +30,8 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/categories" element={<Categories />} />
-          <Route path="/forecast" element={<Forecast />} />
+          <Route path="/forecast" element={<Forecast mode="forecast" />} />
+          <Route path="/balance" element={<Forecast mode="balance" />} />
         </Routes>
       </main>
 
@@ -37,8 +39,9 @@ export default function App() {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-gray-900 border-t border-gray-700 flex">
         <NavItem to="/" icon={<LayoutDashboard size={20} />} label="Dashboard" mobile />
         <NavItem to="/transactions" icon={<ArrowLeftRight size={20} />} label="Movimientos" mobile />
-        <NavItem to="/categories" icon={<Tag size={20} />} label="Categorías" mobile />
         <NavItem to="/forecast" icon={<TrendingUp size={20} />} label="Previsión" mobile />
+        <NavItem to="/balance" icon={<Scale size={20} />} label="Balance" mobile />
+        <NavItem to="/categories" icon={<Tag size={20} />} label="Categorías" mobile />
       </nav>
     </div>
   );

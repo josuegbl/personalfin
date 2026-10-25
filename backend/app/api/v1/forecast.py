@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.core.forecast_catalog import FIXED_CATEGORY_NAMES, normalize_fixed_category_name
 from app.models.category import Category
 from app.models.forecast import ForecastCategoryBudget, ForecastPlan
+from app.models.monthly_balance import MonthlyBalancePlan
 from app.models.recurring_expense import RecurringExpense
 from app.models.recurring_income import RecurringIncome
 from app.models.transaction import Transaction
@@ -177,6 +178,12 @@ def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> F
     """
     today = date.today()
     es_ejecucion = date(year, month, 1) < date(today.year, today.month, 1)
+    balance_cerrado = (
+        db.query(MonthlyBalancePlan.id)
+        .filter(MonthlyBalancePlan.anio == year, MonthlyBalancePlan.mes == month)
+        .first()
+        is not None
+    )
 
     account_a_income, account_b_income, account_a_personal, account_b_personal = _effective_plan_values(plan, year, month, db)
 
@@ -222,6 +229,10 @@ def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> F
             selectinload(RecurringExpense.tiers),
             selectinload(RecurringExpense.subcategoria).selectinload(Category.parent),
         )
+        .filter(
+            or_(RecurringExpense.vigente_desde.is_(None), RecurringExpense.vigente_desde <= last_day),
+            or_(RecurringExpense.vigente_hasta.is_(None), RecurringExpense.vigente_hasta >= first_day),
+        )
         .all()
     )
     gastos_fijos = []
@@ -243,7 +254,7 @@ def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> F
         fixed_item = ForecastCategoryItem(
             id=r.id,
             categoria=parent_name,
-            nombre=(r.subcategoria.nombre if r.subcategoria else r.concepto),
+            nombre=r.concepto,
             importe_planificado=float(tier.importe) if tier else 0.0,
             importe_real=0.0,
             meses=tier.meses if tier else None,
@@ -289,8 +300,9 @@ def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> F
     ]
 
     budget_map: dict[str, float] = {
-        normalize_fixed_category_name(b.categoria_nombre): float(b.importe_planificado)
+        normalize_fixed_category_name(b.categoria.nombre): float(b.importe_planificado)
         for b in plan.budgets
+        if b.categoria is not None
     }
     variable_order = sorted(budget_map.keys(), key=str.lower)
     gastos_variables = [
@@ -320,6 +332,7 @@ def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> F
         anio=year,
         mes=month,
         es_ejecucion=es_ejecucion,
+        balance_cerrado=balance_cerrado,
         cuenta_personal_a=account_a_personal,
         cuenta_personal_b=account_b_personal,
         ingresos_planificados=float(plan.ingresos_planificados) if plan.ingresos_planificados is not None else None,
@@ -401,6 +414,9 @@ def upsert_forecast(
     if not (1 <= month <= 12):
         raise HTTPException(status_code=400, detail="month must be between 1 and 12")
 
+    if db.query(MonthlyBalancePlan.id).filter_by(anio=year, mes=month).first() is not None:
+        raise HTTPException(status_code=409, detail="El balance del mes ya está cerrado")
+
     today = date.today()
     if date(year, month, 1) < date(today.year, today.month, 1):
         raise HTTPException(
@@ -420,19 +436,35 @@ def upsert_forecast(
     plan.ingresos_planificados = Decimal(str(body.ingresos_persona_a + body.ingresos_persona_b))
     plan.guardado = True
 
-    for budget in list(plan.budgets):
-        db.delete(budget)
-    db.flush()
-
     incoming_budget_map = {
         normalize_fixed_category_name(cat.nombre): Decimal(str(cat.importe_planificado))
         for cat in body.categorias
     }
+    parent_categories = (
+        db.query(Category)
+        .filter(Category.padre_id.is_(None))
+        .all()
+    )
+    categories_by_name = {
+        normalize_fixed_category_name(category.nombre): category
+        for category in parent_categories
+    }
+    missing_categories = incoming_budget_map.keys() - categories_by_name.keys()
+    if missing_categories:
+        missing_name = sorted(missing_categories)[0]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Categoría de presupuesto no encontrada: {missing_name}",
+        )
+
+    for budget in list(plan.budgets):
+        db.delete(budget)
+    db.flush()
 
     for category_name, amount in incoming_budget_map.items():
         db.add(ForecastCategoryBudget(
             plan=plan,
-            categoria_nombre=category_name,
+            categoria_id=categories_by_name[category_name].id,
             importe_planificado=amount,
         ))
 

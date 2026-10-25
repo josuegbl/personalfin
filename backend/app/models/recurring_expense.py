@@ -1,5 +1,6 @@
 from decimal import Decimal
-from sqlalchemy import String, Numeric, ForeignKey, ARRAY, Integer
+from datetime import date
+from sqlalchemy import String, Numeric, ForeignKey, ARRAY, Integer, Date
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
@@ -16,8 +17,13 @@ class RecurringExpense(Base):
     # Meses en que aplica (1-12); NULL = todos los meses
     meses: Mapped[list[int] | None] = mapped_column(ARRAY(Integer), nullable=True)
     dia_cobro: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    categoria: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    subcategoria_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
+    vigente_desde: Mapped[date | None] = mapped_column(Date, nullable=True)
+    vigente_hasta: Mapped[date | None] = mapped_column(Date, nullable=True)
+    subcategoria_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id", name="fk_recurring_expenses_subcategoria_id"),
+        index=True,
+        nullable=True,
+    )
 
     account: Mapped["Account | None"] = relationship()
     subcategoria: Mapped["Category | None"] = relationship("Category")
@@ -26,6 +32,12 @@ class RecurringExpense(Base):
         cascade="all, delete-orphan",
         order_by="RecurringExpenseTier.id",
     )
+
+    @property
+    def categoria(self) -> str | None:
+        if self.subcategoria is None:
+            return None
+        return self.subcategoria.parent.nombre if self.subcategoria.parent else self.subcategoria.nombre
 
 
 class RecurringExpenseTier(Base):

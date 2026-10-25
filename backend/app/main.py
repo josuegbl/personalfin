@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import router
 from app.core.database import engine, Base
-from app.seed import ensure_forecast_catalog
+from app.seed import ensure_category_system_codes, ensure_forecast_catalog
 import app.models  # noqa: F401 – registra todos los modelos en Base.metadata
 
 app = FastAPI(
@@ -54,6 +54,7 @@ def _seed_categories():
         ("Educación", "📚", "#0ea5e9", True, "gasto", True),
         ("Seguros", "🛡️", "#64748b", True, "gasto", True),
         ("Impuestos", "🏛️", "#94a3b8", True, "gasto", True),
+        ("Préstamos", "🏦", "#dc2626", True, "gasto", True),
         ("Nómina", "💼", "#10b981", False, "ingreso", True),
         ("Transferencias", None, "#a3a3a3", False, "transferencia", True),
         ("Sin categoría", "?", "#94a3b8", False, "neutral", True),
@@ -64,6 +65,8 @@ def _seed_categories():
     db = SessionLocal()
     try:
         if db.query(Category).count() > 0:
+            ensure_category_system_codes(db)
+            db.commit()
             return
 
         for nombre, icono, color, compartida, naturaleza, incluida in CATEGORIAS:
@@ -100,6 +103,7 @@ def _seed_categories():
                 subcategory.naturaleza = naturaleza
                 subcategory.incluida_en_analisis = incluida
 
+        ensure_category_system_codes(db)
         db.commit()
     finally:
         db.close()
@@ -108,7 +112,7 @@ def _seed_categories():
 def _seed_recurring_expenses():
     from app.core.database import SessionLocal
     from app.models.recurring_expense import RecurringExpense, RecurringExpenseTier
-    from app.seed import RECURRING_EXPENSES
+    from app.seed import RECURRING_EXPENSES, recurring_expense_category_id
 
     db = SessionLocal()
     try:
@@ -116,7 +120,13 @@ def _seed_recurring_expenses():
             return
         for data in RECURRING_EXPENSES:
             tiers_data = data.get("tiers", [])
-            expense_data = {k: v for k, v in data.items() if k != "tiers"}
+            parent_name = data["categoria"]
+            expense_data = {
+                k: v for k, v in data.items() if k not in {"tiers", "categoria"}
+            }
+            expense_data["subcategoria_id"] = recurring_expense_category_id(
+                db, parent_name, data["concepto"]
+            )
             if "importe" not in expense_data and tiers_data:
                 catchall = next((t for t in tiers_data if t.get("meses") is None), tiers_data[0])
                 expense_data["importe"] = catchall["importe"]

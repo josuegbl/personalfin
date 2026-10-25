@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.category import Category
-from app.models.forecast import ForecastCategoryBudget
 from app.models.recurring_expense import RecurringExpense
 from app.models.transaction import Transaction
 from app.schemas.category import CategoryCreate, CategoryOut, CategoryUpdate
@@ -61,7 +60,7 @@ def create_category(data: CategoryCreate, db: Session = Depends(get_db)):
 
 @router.patch("/{category_id}", response_model=CategoryOut)
 def update_category(category_id: int, data: CategoryUpdate, db: Session = Depends(get_db)):
-    """Rename a category and propagate its legacy stored labels.
+    """Rename a category while preserving ID-based associations.
 
     Args:
         category_id: ID of the category to rename.
@@ -90,20 +89,9 @@ def update_category(category_id: int, data: CategoryUpdate, db: Session = Depend
     if duplicate:
         raise HTTPException(status_code=409, detail="Ya existe una categoría con ese nombre")
 
-    old_name = category.nombre
     category.nombre = new_name
 
-    # These text fields predate the category hierarchy. Keep them synchronized
-    # so every existing forecast and recurring expense resolves to this rename.
-    db.query(ForecastCategoryBudget).filter(
-        ForecastCategoryBudget.categoria_nombre == old_name
-    ).update({ForecastCategoryBudget.categoria_nombre: new_name}, synchronize_session=False)
-
-    if category.padre_id is None:
-        db.query(RecurringExpense).filter(
-            RecurringExpense.categoria == old_name
-        ).update({RecurringExpense.categoria: new_name}, synchronize_session=False)
-    else:
+    if category.padre_id is not None:
         db.query(RecurringExpense).filter(
             RecurringExpense.subcategoria_id == category_id
         ).update({RecurringExpense.concepto: new_name}, synchronize_session=False)
