@@ -84,6 +84,7 @@ export interface DashboardData {
   resumen_mes_actual: MonthlySummary;
   resumen_mes_anterior: MonthlySummary;
   gastos_por_categoria: CategoryExpense[];
+  gastos_por_categoria_anual: CategoryExpense[];
   evolucion_mensual: MonthlySummary[];
 }
 

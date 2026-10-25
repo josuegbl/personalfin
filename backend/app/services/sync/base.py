@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from app.models.account import Account
 from app.models.category import Category
 from app.models.transaction import Transaction
+from app.services.classifier import TransactionClassifier
+from app.services.classifier import TransactionClassifier
 
 
 @dataclass
@@ -44,6 +46,7 @@ class SourceAdapter(ABC):
 
     def _persist(self, transactions: list[RawTransaction], balance: Decimal) -> int:
         imported = 0
+        new_transactions: list[Transaction] = []
         uncategorized = (
             self.db.query(Category)
             .filter(Category.nombre == "Sin categoría")
@@ -69,11 +72,15 @@ class SourceAdapter(ABC):
                 hash=h,
             )
             self.db.add(t)
+            new_transactions.append(t)
             imported += 1
 
         self.account.saldo_actual = balance
         self.account.ultima_sync = datetime.utcnow()
         self.db.commit()
+        new_transaction_ids = [transaction.id for transaction in new_transactions]
+        if new_transaction_ids:
+            TransactionClassifier().classify_unclassified(self.db, new_transaction_ids)
         return imported
 
     def _hash(self, raw: RawTransaction) -> str:

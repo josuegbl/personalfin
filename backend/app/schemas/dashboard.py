@@ -33,4 +33,5 @@ class DashboardData(BaseModel):
     resumen_mes_actual: MonthlySummary
     resumen_mes_anterior: MonthlySummary
     gastos_por_categoria: list[CategoryExpense]
+    gastos_por_categoria_anual: list[CategoryExpense]
     evolucion_mensual: list[MonthlySummary]

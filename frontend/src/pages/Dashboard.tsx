@@ -1,21 +1,39 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
 } from "recharts";
-import { TrendingUp, TrendingDown, PiggyBank, Wallet } from "lucide-react";
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, PiggyBank, Wallet } from "lucide-react";
 import { api } from "../api/client";
 import AccountCard from "../components/AccountCard";
 import StatTile from "../components/StatTile";
 import { formatCurrency, shortMonth } from "../utils/format";
+import { isAtOrBeforeMinMonth } from "../utils/dateLimits";
 
 const MONTH_NAMES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
+function shiftMonth(year: number, month: number, offset: number): [number, number] {
+  const value = year * 12 + month - 1 + offset;
+  return [Math.floor(value / 12), (value % 12) + 1];
+}
+
 export default function Dashboard() {
+  const [year, setYear] = useState(() => new Date().getFullYear());
+  const [month, setMonth] = useState(() => new Date().getMonth() + 1);
+  const [categoryView, setCategoryView] = useState<"month" | "year">("month");
+  const today = new Date();
+  const isCurrentMonth = year === today.getFullYear() && month === today.getMonth() + 1;
+  const isMinMonth = isAtOrBeforeMinMonth(year, month);
   const { data, isLoading, error } = useQuery({
-    queryKey: ["dashboard"],
-    queryFn: api.dashboard.get,
+    queryKey: ["dashboard", year, month],
+    queryFn: () => api.dashboard.get(year, month),
   });
+
+  function moveMonth(offset: number) {
+    const [nextYear, nextMonth] = shiftMonth(year, month, offset);
+    setYear(nextYear);
+    setMonth(nextMonth);
+  }
 
   if (isLoading) {
     return (
@@ -35,27 +53,51 @@ export default function Dashboard() {
 
   const { resumen_mes_actual: mes, saldo_por_cuenta, gastos_por_categoria, evolucion_mensual } = data;
 
-  const chartData = evolucion_mensual.map((m) => ({
-    name: shortMonth(m.mes),
-    Ingresos: m.ingresos,
-    Gastos: m.gastos,
-    Ahorro: m.ahorro,
+  const chartData = evolucion_mensual.map((summary) => ({
+    name: `${shortMonth(summary.mes)} ${String(summary.anio).slice(-2)}`,
+    Ingresos: summary.ingresos,
+    Gastos: summary.gastos,
+    Ahorro: summary.ahorro,
   }));
 
-  const pieData = gastos_por_categoria.slice(0, 8).map((c) => ({
-    name: c.categoria_nombre,
-    value: c.importe,
-    color: c.color ?? "#94a3b8",
-  }));
+  const monthlySavings = evolucion_mensual.filter(
+    (summary) => summary.anio === year
+      && summary.mes <= month
+      && !(isCurrentMonth && summary.mes === month),
+  );
+  const accumulatedYear = monthlySavings.reduce((total, summary) => total + Number(summary.ahorro), 0);
+  const categoryExpenses = categoryView === "month"
+    ? gastos_por_categoria
+    : data.gastos_por_categoria_anual;
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Page header */}
-      <div>
+      <div className="space-y-3">
         <h2 className="text-xl font-bold text-gray-900">Dashboard</h2>
-        <p className="text-sm text-gray-500">
-          {new Date().toLocaleDateString("es-ES", { month: "long", year: "numeric" })}
-        </p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => moveMonth(-1)}
+            disabled={isMinMonth}
+            title="Mes anterior"
+            aria-label="Mes anterior"
+            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <span className="min-w-28 text-center text-sm font-medium capitalize text-gray-700">
+            {MONTH_NAMES[month - 1]} {year}
+          </span>
+          <button
+            onClick={() => moveMonth(1)}
+            disabled={isCurrentMonth}
+            title="Mes siguiente"
+            aria-label="Mes siguiente"
+            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
       </div>
 
       {/* ── SALDOS POR CUENTA ─────────────────────────────────── */}
@@ -132,66 +174,81 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* Gastos por categoría */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Gastos por categoría</h3>
-          {pieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                >
-                  {pieData.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ fontSize: 11 }} />
-                <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-              </PieChart>
-            </ResponsiveContainer>
+        {/* Ahorro mes a mes */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm flex flex-col min-h-0">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Ahorro mes a mes · {year}</h3>
+          {monthlySavings.length > 0 ? (
+            <>
+              <div className="divide-y divide-gray-100 flex-1 overflow-y-auto">
+                {monthlySavings.map((summary) => (
+                  <div key={`${summary.anio}-${summary.mes}`} className="flex items-center justify-between py-2">
+                    <span className="text-sm text-gray-600">{MONTH_NAMES[summary.mes - 1]}</span>
+                    <span className={`text-sm font-semibold tabular-nums ${summary.ahorro >= 0 ? "text-green-600" : "text-red-500"}`}>
+                      {formatCurrency(summary.ahorro)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 border-t border-gray-200 pt-3 flex items-center justify-between">
+                <span className="text-sm font-semibold text-gray-700">Total acumulado</span>
+                <span className={`text-base font-bold tabular-nums ${accumulatedYear >= 0 ? "text-green-600" : "text-red-500"}`}>
+                  {formatCurrency(accumulatedYear)}
+                </span>
+              </div>
+            </>
           ) : (
-            <p className="text-sm text-gray-400 text-center py-8">Sin datos este mes</p>
+            <p className="text-sm text-gray-400 py-8 text-center">Sin datos acumulados</p>
           )}
         </div>
       </div>
 
       {/* ── TOP GASTOS POR CATEGORÍA ──────────────────────────── */}
-      {gastos_por_categoria.length > 0 && (
-        <section className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-700">Desglose por categoría</h3>
+      <section className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 pt-4 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Desglose por categoría</h3>
+          <div role="tablist" aria-label="Período del desglose" className="flex gap-5">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={categoryView === "month"}
+              onClick={() => setCategoryView("month")}
+              className={`pb-2 text-sm border-b-2 ${categoryView === "month" ? "border-blue-600 text-blue-700 font-medium" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              Mes
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={categoryView === "year"}
+              onClick={() => setCategoryView("year")}
+              className={`pb-2 text-sm border-b-2 ${categoryView === "year" ? "border-blue-600 text-blue-700 font-medium" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              Acumulado del año
+            </button>
           </div>
+        </div>
+        {categoryExpenses.length > 0 ? (
           <div className="divide-y divide-gray-50">
-            {gastos_por_categoria.map((c, i) => (
-              <div key={i} className="flex items-center gap-3 px-5 py-3">
-                <span
-                  className="w-3 h-3 rounded-full flex-shrink-0"
-                  style={{ background: c.color ?? "#94a3b8" }}
-                />
-                <span className="flex-1 text-sm text-gray-700">{c.categoria_nombre}</span>
-                <span className="text-xs text-gray-400 w-12 text-right">{c.porcentaje}%</span>
-                <div
-                  className="h-1.5 rounded-full bg-gray-100 w-24 overflow-hidden"
-                >
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${c.porcentaje}%`, background: c.color ?? "#94a3b8" }}
-                  />
+            {categoryExpenses.map((category) => (
+              <div key={category.categoria_id ?? category.categoria_nombre} className="flex items-center gap-3 px-5 py-3">
+                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: category.color ?? "#94a3b8" }} />
+                <span className="flex-1 min-w-0 text-sm text-gray-700 truncate">{category.categoria_nombre}</span>
+                <span className="text-xs text-gray-400 w-12 text-right">{category.porcentaje}%</span>
+                <div className="hidden sm:block h-1.5 rounded-full bg-gray-100 w-24 overflow-hidden">
+                  <div className="h-full" style={{ width: `${category.porcentaje}%`, background: category.color ?? "#94a3b8" }} />
                 </div>
                 <span className="text-sm font-semibold text-gray-900 w-28 text-right tabular-nums">
-                  {formatCurrency(c.importe)}
+                  {formatCurrency(category.importe)}
                 </span>
               </div>
             ))}
           </div>
-        </section>
-      )}
+        ) : (
+          <p className="px-5 py-8 text-center text-sm text-gray-400">
+            {categoryView === "month" ? "Sin gastos este mes" : "Sin gastos acumulados este año"}
+          </p>
+        )}
+      </section>
     </div>
   );
 }

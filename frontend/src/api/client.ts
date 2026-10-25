@@ -64,7 +64,8 @@ async function uploadFile<T>(path: string, file: File): Promise<T> {
 
 export const api = {
   dashboard: {
-    get: () => get<DashboardData>("/dashboard/"),
+    get: (year?: number, month?: number) =>
+      get<DashboardData>("/dashboard/", { year, month }),
   },
   accounts: {
     list: () => get<Account[]>("/accounts/"),
@@ -80,6 +81,8 @@ export const api = {
       fecha_desde?: string;
       fecha_hasta?: string;
       comercio?: string;
+      concepto?: string;
+      tipo?: "ingresos" | "gastos";
       recurrente?: boolean;
       page?: number;
       page_size?: number;

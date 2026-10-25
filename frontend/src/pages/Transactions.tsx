@@ -9,6 +9,11 @@ export default function Transactions() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [accountId, setAccountId] = useState<number | undefined>();
+  const [transactionType, setTransactionType] = useState<"ingresos" | "gastos" | "">("");
+  const [categoryId, setCategoryId] = useState<number | "">("");
+  const [datePreset, setDatePreset] = useState<"" | "3m" | "6m" | "1y" | "ytd" | "custom">("");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [page, setPage] = useState(1);
 
   const { data: accounts } = useQuery({ queryKey: ["accounts"], queryFn: api.accounts.list });
@@ -22,44 +27,146 @@ export default function Transactions() {
       queryClient.invalidateQueries({ queryKey: ["forecast"] });
     },
   });
+
+  function resolvedDateRange(): { fecha_desde?: string; fecha_hasta?: string } {
+    const today = new Date();
+    const formatDateInput = (date: Date) =>
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    if (datePreset === "3m") start.setMonth(start.getMonth() - 3);
+    else if (datePreset === "6m") start.setMonth(start.getMonth() - 6);
+    else if (datePreset === "1y") start.setFullYear(start.getFullYear() - 1);
+    else if (datePreset === "ytd") return { fecha_desde: `${today.getFullYear()}-01-01` };
+    else if (datePreset === "custom") {
+      return { fecha_desde: customFrom || undefined, fecha_hasta: customTo || undefined };
+    } else return {};
+    return { fecha_desde: formatDateInput(start) };
+  }
+
+  const dateRange = resolvedDateRange();
   const { data: transactions, isLoading } = useQuery({
-    queryKey: ["transactions", accountId, search, page],
+    queryKey: ["transactions", accountId, search, transactionType, categoryId, datePreset, customFrom, customTo, page],
     queryFn: () =>
       api.transactions.list({
         account_id: accountId,
-        comercio: search || undefined,
+        concepto: search || undefined,
+        tipo: transactionType || undefined,
+        categoria_id: categoryId === "" ? undefined : categoryId,
+        ...dateRange,
         page,
         page_size: 50,
       }),
   });
 
+  function clearFilters() {
+    setAccountId(undefined);
+    setTransactionType("");
+    setCategoryId("");
+    setDatePreset("");
+    setCustomFrom("");
+    setCustomTo("");
+    setPage(1);
+  }
+
+  const selectClass = "w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
+  const labelClass = "block text-xs font-medium text-gray-500 mb-1";
+
   return (
-    <div className="p-6 space-y-4 max-w-5xl mx-auto">
+    <div className="p-6 space-y-4 max-w-6xl mx-auto">
       <h2 className="text-xl font-bold text-gray-900">Movimientos</h2>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-48">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar comercio…"
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <select
-          value={accountId ?? ""}
-          onChange={(e) => { setAccountId(e.target.value ? Number(e.target.value) : undefined); setPage(1); }}
-          className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Todas las cuentas</option>
-          {accounts?.map((a) => (
-            <option key={a.id} value={a.id}>{a.alias}</option>
-          ))}
-        </select>
-      </div>
+      <div className="flex flex-col gap-4 md:flex-row md:items-start">
+        <aside className="w-full shrink-0 rounded-lg border border-gray-200 bg-white p-4 space-y-4 md:w-56">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Filtros</p>
+          <div>
+            <label className={labelClass} htmlFor="transactions-account">Cuenta</label>
+            <select
+              id="transactions-account"
+              value={accountId ?? ""}
+              onChange={(event) => { setAccountId(event.target.value ? Number(event.target.value) : undefined); setPage(1); }}
+              className={selectClass}
+            >
+              <option value="">Todas</option>
+              {accounts?.map((account) => <option key={account.id} value={account.id}>{account.alias}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass} htmlFor="transactions-type">Tipo</label>
+            <select
+              id="transactions-type"
+              value={transactionType}
+              onChange={(event) => { setTransactionType(event.target.value as typeof transactionType); setPage(1); }}
+              className={selectClass}
+            >
+              <option value="">Todos</option>
+              <option value="ingresos">Ingresos</option>
+              <option value="gastos">Gastos</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass} htmlFor="transactions-category">Categoría</label>
+            <select
+              id="transactions-category"
+              value={categoryId}
+              onChange={(event) => { setCategoryId(event.target.value ? Number(event.target.value) : ""); setPage(1); }}
+              className={selectClass}
+            >
+              <option value="">Todas</option>
+              {categories?.map((category) => <option key={category.id} value={category.id}>{category.nombre}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass} htmlFor="transactions-period">Período</label>
+            <select
+              id="transactions-period"
+              value={datePreset}
+              onChange={(event) => { setDatePreset(event.target.value as typeof datePreset); setPage(1); }}
+              className={selectClass}
+            >
+              <option value="">Todo el historial</option>
+              <option value="ytd">Este año</option>
+              <option value="1y">Últimos 12 meses</option>
+              <option value="6m">Últimos 6 meses</option>
+              <option value="3m">Últimos 3 meses</option>
+              <option value="custom">Personalizado</option>
+            </select>
+            {datePreset === "custom" && (
+              <div className="mt-2 space-y-2">
+                <input
+                  type="date"
+                  aria-label="Fecha desde"
+                  value={customFrom}
+                  onChange={(event) => { setCustomFrom(event.target.value); setPage(1); }}
+                  className={selectClass}
+                />
+                <input
+                  type="date"
+                  aria-label="Fecha hasta"
+                  value={customTo}
+                  onChange={(event) => { setCustomTo(event.target.value); setPage(1); }}
+                  className={selectClass}
+                />
+              </div>
+            )}
+          </div>
+          {(accountId !== undefined || transactionType !== "" || categoryId !== "" || datePreset !== "") && (
+            <button type="button" onClick={clearFilters} className="text-xs text-blue-600 hover:underline">
+              Limpiar filtros
+            </button>
+          )}
+        </aside>
+
+        <div className="min-w-0 flex-1 space-y-4">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar concepto o comercio…"
+              value={search}
+              onChange={(event) => { setSearch(event.target.value); setPage(1); }}
+              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
 
       {/* Table / Card list */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -195,6 +302,8 @@ export default function Transactions() {
           >
             Siguiente
           </button>
+        </div>
+      </div>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from datetime import date
 from app.core.database import get_db
 from app.models.transaction import Transaction
@@ -16,6 +16,8 @@ def list_transactions(
     fecha_desde: date | None = Query(None),
     fecha_hasta: date | None = Query(None),
     comercio: str | None = Query(None),
+    concepto: str | None = Query(None),
+    tipo: str | None = Query(None, pattern="^(ingresos|gastos)$"),
     recurrente: bool | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
@@ -34,6 +36,16 @@ def list_transactions(
         filters.append(Transaction.fecha <= fecha_hasta)
     if comercio:
         filters.append(Transaction.comercio.ilike(f"%{comercio}%"))
+    if concepto:
+        search_filter = f"%{concepto}%"
+        filters.append(or_(
+            Transaction.concepto_original.ilike(search_filter),
+            Transaction.comercio.ilike(search_filter),
+        ))
+    if tipo == "ingresos":
+        filters.append(Transaction.importe > 0)
+    elif tipo == "gastos":
+        filters.append(Transaction.importe < 0)
     if recurrente is not None:
         filters.append(Transaction.recurrente == recurrente)
     if filters:

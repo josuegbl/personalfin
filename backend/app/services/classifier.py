@@ -36,15 +36,19 @@ class TransactionClassifier:
     MIN_SAMPLES_PER_CLASS: int = 3
     MIN_TOTAL_SAMPLES: int = 10
 
-    def classify_unclassified(self, db: Session) -> tuple[int, int]:
-        """Train on classified transactions and predict for uncategorized ones.
+    def classify_unclassified(self, db: Session, transaction_ids: list[int]) -> tuple[int, int]:
+        """Train on classified history and predict only for the supplied new transactions.
 
         Args:
             db: Active SQLAlchemy session.
+            transaction_ids: Newly persisted transaction IDs to classify.
 
         Returns:
             Tuple of (classified_count, skipped_count).
         """
+        if not transaction_ids:
+            return 0, 0
+
         sin_cat_id = self._sin_categoria_id(db)
         if sin_cat_id is None:
             return 0, 0
@@ -55,7 +59,7 @@ class TransactionClassifier:
         model, vectorizer = self._train(texts, labels)
 
         return self._predict_and_assign(
-            db, sin_cat_id, category_rules, keyword_map, model, vectorizer
+            db, sin_cat_id, category_rules, keyword_map, model, vectorizer, transaction_ids
         )
 
     def _sin_categoria_id(self, db: Session) -> int | None:
@@ -211,6 +215,7 @@ class TransactionClassifier:
         keyword_map: dict[str, int],
         model: CalibratedClassifierCV | None,
         vectorizer: TfidfVectorizer | None,
+        transaction_ids: list[int],
     ) -> tuple[int, int]:
         """Predict categories for all uncategorized transactions and persist confident ones.
 
@@ -229,7 +234,10 @@ class TransactionClassifier:
         """
         unclassified = (
             db.query(Transaction)
-            .filter(Transaction.categoria_id == sin_cat_id)
+            .filter(
+                Transaction.categoria_id == sin_cat_id,
+                Transaction.id.in_(transaction_ids),
+            )
             .all()
         )
 
