@@ -5,13 +5,16 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, false, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
+from app.core.category_catalog import CATEGORY_CODE_SIN_CATEGORIA
+from app.core.date_limits import is_before_min_month
 from app.core.forecast_catalog import FIXED_CATEGORY_NAMES, normalize_fixed_category_name
 from app.models.category import Category
 from app.models.forecast import ForecastCategoryBudget, ForecastPlan
-from app.models.monthly_balance import MonthlyBalancePlan
+from app.models.monthly_balance import MonthlyBalanceCategoryPlan, MonthlyBalancePlan
 from app.models.recurring_expense import RecurringExpense
 from app.models.recurring_income import RecurringIncome
 from app.models.transaction import Transaction
@@ -178,14 +181,20 @@ def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> F
     """
     today = date.today()
     es_ejecucion = date(year, month, 1) < date(today.year, today.month, 1)
-    balance_cerrado = (
-        db.query(MonthlyBalancePlan.id)
+    balance_snapshot = (
+        db.query(MonthlyBalancePlan)
+        .options(selectinload(MonthlyBalancePlan.categorias))
         .filter(MonthlyBalancePlan.anio == year, MonthlyBalancePlan.mes == month)
         .first()
-        is not None
     )
+    balance_cerrado = balance_snapshot is not None
 
     account_a_income, account_b_income, account_a_personal, account_b_personal = _effective_plan_values(plan, year, month, db)
+    if balance_snapshot is not None:
+        account_a_income = float(balance_snapshot.ingresos_planificados_josue)
+        account_b_income = float(balance_snapshot.ingresos_planificados_adi)
+        account_a_personal = float(balance_snapshot.cuenta_personal_josue)
+        account_b_personal = float(balance_snapshot.cuenta_personal_adi)
 
     is_nomina = _nomina_condition(db)
 
@@ -215,56 +224,82 @@ def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> F
         Transaction.fecha >= first_day,
         Transaction.fecha <= last_day,
         Transaction.importe > 0,
-        or_(~is_nomina, Transaction.categoria_id == None),
+        or_(~is_nomina, Transaction.categoria_id == None),  # noqa: E711
         or_(Category.id.is_(None), Category.incluida_en_analisis == True),  # noqa: E712
     ).one()
     ingresos_otros = float(otros_row[0])
-
     ingresos_reales = ingresos_nomina + ingresos_otros
 
     # --- Gastos fijos ---
-    all_recurring = (
-        db.query(RecurringExpense)
-        .options(
-            selectinload(RecurringExpense.tiers),
-            selectinload(RecurringExpense.subcategoria).selectinload(Category.parent),
-        )
-        .filter(
-            or_(RecurringExpense.vigente_desde.is_(None), RecurringExpense.vigente_desde <= last_day),
-            or_(RecurringExpense.vigente_hasta.is_(None), RecurringExpense.vigente_hasta >= first_day),
-        )
-        .all()
-    )
     gastos_fijos = []
+    fixed_by_category_id: dict[int, list[ForecastCategoryItem]] = defaultdict(list)
     grouped_fixed: dict[str, list[ForecastCategoryItem]] = defaultdict(list)
     for fixed_name in FIXED_CATEGORY_NAMES:
         grouped_fixed[fixed_name] = []
 
-    for r in all_recurring:
-        tier = _tier_for_month(r, month)
-        parent_name = None
-        if r.subcategoria and r.subcategoria.parent:
-            parent_name = r.subcategoria.parent.nombre
-        elif r.categoria:
-            parent_name = r.categoria
-        else:
-            parent_name = "Otros"
-        parent_name = normalize_fixed_category_name(parent_name)
-
-        fixed_item = ForecastCategoryItem(
-            id=r.id,
-            categoria=parent_name,
-            nombre=r.concepto,
-            importe_planificado=float(tier.importe) if tier else 0.0,
-            importe_real=0.0,
-            meses=tier.meses if tier else None,
-            tiers=[
-                FixedExpenseTier(importe=float(t.importe), meses=t.meses)
-                for t in r.tiers
-            ],
+    if balance_snapshot is not None:
+        for line in balance_snapshot.categorias:
+            if line.tipo != "gasto_fijo":
+                continue
+            category = line.categoria
+            parent_name = (
+                category.parent.nombre
+                if category is not None and category.parent is not None
+                else category.nombre if category is not None else "Otros"
+            )
+            parent_name = normalize_fixed_category_name(parent_name)
+            fixed_item = ForecastCategoryItem(
+                categoria=parent_name,
+                categoria_id=line.categoria_id,
+                nombre=line.nombre,
+                importe_planificado=float(line.importe_planificado),
+                importe_real=0.0,
+            )
+            gastos_fijos.append(fixed_item)
+            if line.categoria_id is not None:
+                fixed_by_category_id[line.categoria_id].append(fixed_item)
+            grouped_fixed[parent_name].append(fixed_item)
+    else:
+        all_recurring = (
+            db.query(RecurringExpense)
+            .options(
+                selectinload(RecurringExpense.tiers),
+                selectinload(RecurringExpense.subcategoria).selectinload(Category.parent),
+            )
+            .filter(
+                or_(RecurringExpense.vigente_desde.is_(None), RecurringExpense.vigente_desde <= last_day),
+                or_(RecurringExpense.vigente_hasta.is_(None), RecurringExpense.vigente_hasta >= first_day),
+            )
+            .all()
         )
-        gastos_fijos.append(fixed_item)
-        grouped_fixed[parent_name].append(fixed_item)
+        for expense in all_recurring:
+            tier = _tier_for_month(expense, month)
+            parent_name = None
+            if expense.subcategoria and expense.subcategoria.parent:
+                parent_name = expense.subcategoria.parent.nombre
+            elif expense.categoria:
+                parent_name = expense.categoria
+            else:
+                parent_name = "Otros"
+            parent_name = normalize_fixed_category_name(parent_name)
+
+            fixed_item = ForecastCategoryItem(
+                id=expense.id,
+                categoria=parent_name,
+                categoria_id=expense.subcategoria_id,
+                nombre=expense.concepto,
+                importe_planificado=float(tier.importe) if tier else 0.0,
+                importe_real=0.0,
+                meses=tier.meses if tier else None,
+                tiers=[
+                    FixedExpenseTier(importe=float(item.importe), meses=item.meses)
+                    for item in expense.tiers
+                ],
+            )
+            gastos_fijos.append(fixed_item)
+            if expense.subcategoria_id is not None:
+                fixed_by_category_id[expense.subcategoria_id].append(fixed_item)
+            grouped_fixed[parent_name].append(fixed_item)
 
     for key, items in grouped_fixed.items():
         grouped_fixed[key] = sorted(items, key=lambda item: item.nombre.lower())
@@ -278,36 +313,66 @@ def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> F
 
     expense_rows = (
         db.query(
+            Transaction.categoria_id.label("categoria_id"),
             Category.nombre.label("cat_nombre"),
             func.sum(Transaction.importe).label("total"),
         )
         .outerjoin(Category, Transaction.categoria_id == Category.id)
         .filter(and_(base_filter, Transaction.importe < 0))
-        .group_by(Category.nombre)
+        .group_by(Transaction.categoria_id, Category.nombre)
         .order_by(func.sum(Transaction.importe))
         .all()
     )
 
-    real_by_category: dict[str, float] = {
-        (row.cat_nombre or "Sin categoría"): float(abs(Decimal(str(row.total))))
-        for row in expense_rows
-    }
-    total_gastos_reales = sum(real_by_category.values())
+    real_by_category: dict[str, float] = {}
+    real_category_ids: dict[str, int | None] = {}
+    snapshot_budget_map: dict[str, float] | None = None
+    budget_category_ids: dict[str, int] = {}
+    if balance_snapshot is not None:
+        snapshot_budget_map = {}
+        for line in balance_snapshot.categorias:
+            if line.tipo != "gasto_variable" or line.categoria is None:
+                continue
+            category_name = normalize_fixed_category_name(line.categoria.nombre)
+            snapshot_budget_map[category_name] = float(line.importe_planificado)
+            if line.categoria_id is not None:
+                budget_category_ids[category_name] = line.categoria_id
+    total_gastos_reales = 0.0
+    for row in expense_rows:
+        amount = float(abs(Decimal(str(row.total))))
+        total_gastos_reales += amount
+        matching_fixed = fixed_by_category_id.get(row.categoria_id, [])
+        if len(matching_fixed) == 1:
+            matching_fixed[0].importe_real += amount
+        else:
+            category_name = row.cat_nombre or "Sin categoría"
+            real_by_category[category_name] = real_by_category.get(category_name, 0.0) + amount
+            real_category_ids[category_name] = row.categoria_id
 
     gastos_reales_por_categoria = [
-        ForecastCategoryItem(nombre=nombre, importe_planificado=0.0, importe_real=importe)
+        ForecastCategoryItem(
+            categoria_id=real_category_ids.get(nombre),
+            nombre=nombre,
+            importe_planificado=0.0,
+            importe_real=importe,
+        )
         for nombre, importe in real_by_category.items()
     ]
 
-    budget_map: dict[str, float] = {
-        normalize_fixed_category_name(b.categoria.nombre): float(b.importe_planificado)
-        for b in plan.budgets
-        if b.categoria is not None
-    }
+    budget_map: dict[str, float] = snapshot_budget_map if snapshot_budget_map is not None else {}
+    if snapshot_budget_map is None:
+        for budget in plan.budgets:
+            if budget.categoria is None:
+                continue
+            category_name = normalize_fixed_category_name(budget.categoria.nombre)
+            budget_map[category_name] = float(budget.importe_planificado)
+            if budget.categoria_id is not None:
+                budget_category_ids[category_name] = budget.categoria_id
     variable_order = sorted(budget_map.keys(), key=str.lower)
     gastos_variables = [
         ForecastCategoryItem(
             categoria=name,
+            categoria_id=budget_category_ids.get(name),
             nombre=name,
             importe_planificado=budget_map.get(name, 0.0),
             importe_real=real_by_category.get(name, 0.0),
@@ -333,9 +398,14 @@ def _build_response(plan: ForecastPlan, month: int, year: int, db: Session) -> F
         mes=month,
         es_ejecucion=es_ejecucion,
         balance_cerrado=balance_cerrado,
+        plan_guardado=plan.guardado,
         cuenta_personal_a=account_a_personal,
         cuenta_personal_b=account_b_personal,
-        ingresos_planificados=float(plan.ingresos_planificados) if plan.ingresos_planificados is not None else None,
+        ingresos_planificados=(
+            float(balance_snapshot.ingresos_planificados)
+            if balance_snapshot is not None
+            else float(plan.ingresos_planificados) if plan.ingresos_planificados is not None else None
+        ),
         ingresos_persona_a=account_a_income,
         ingresos_persona_b=account_b_income,
         ingresos_nomina=ingresos_nomina,
@@ -384,6 +454,117 @@ def get_forecast(year: int, month: int, db: Session = Depends(get_db)) -> Foreca
         db.add(plan)
         db.commit()
         db.refresh(plan)
+
+    return _build_response(plan, month, year, db)
+
+
+@router.post("/{year}/{month}/close", response_model=ForecastResponse)
+def close_forecast_month(year: int, month: int, db: Session = Depends(get_db)) -> ForecastResponse:
+    if not 1 <= month <= 12:
+        raise HTTPException(status_code=400, detail="month must be between 1 and 12")
+    if is_before_min_month(year, month):
+        raise HTTPException(status_code=400, detail="month is before the supported date range")
+
+    if db.query(MonthlyBalancePlan.id).filter_by(anio=year, mes=month).first() is not None:
+        raise HTTPException(status_code=409, detail="El balance del mes ya está cerrado")
+
+    month_end = date(year, month, monthrange(year, month)[1])
+    if month_end >= date.today():
+        raise HTTPException(status_code=400, detail="Solo se pueden cerrar meses que ya han terminado")
+
+    plan = db.query(ForecastPlan).filter_by(anio=year, mes=month).first()
+    if plan is None or not plan.guardado:
+        raise HTTPException(status_code=409, detail="Guarda la planificación antes de cerrar el mes")
+
+    response = _build_response(plan, month, year, db)
+    category_by_code = (
+        db.query(Category)
+        .filter(Category.codigo_sistema == CATEGORY_CODE_SIN_CATEGORIA)
+        .first()
+    )
+
+    fixed_lines: list[MonthlyBalanceCategoryPlan] = []
+    fixed_keys: set[tuple[int, str]] = set()
+    for expense in response.gastos_fijos:
+        planned = Decimal(str(expense.importe_planificado))
+        actual_at_close = Decimal(str(expense.importe_real))
+        if planned == 0 and actual_at_close == 0:
+            continue
+        if expense.categoria_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"El gasto fijo {expense.nombre} no tiene categoría enlazada",
+            )
+        key = (expense.categoria_id, expense.nombre)
+        if key in fixed_keys:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Hay gastos fijos duplicados para {expense.nombre}",
+            )
+        fixed_keys.add(key)
+        fixed_lines.append(MonthlyBalanceCategoryPlan(
+            tipo="gasto_fijo",
+            categoria_id=expense.categoria_id,
+            nombre=expense.nombre,
+            importe_planificado=planned,
+        ))
+
+    variable_plan: dict[int, Decimal] = defaultdict(lambda: Decimal("0"))
+    for category in response.gastos_variables:
+        if category.categoria_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"La categoría variable {category.nombre} no tiene ID",
+            )
+        variable_plan[category.categoria_id] += Decimal(str(category.importe_planificado))
+
+    variable_ids = set(variable_plan)
+    for category in response.gastos_reales_por_categoria:
+        category_id = category.categoria_id
+        if category_id is None:
+            if category_by_code is None:
+                raise HTTPException(status_code=409, detail="No existe la categoría Sin categoría")
+            category_id = category_by_code.id
+        variable_ids.add(category_id)
+
+    variable_lines: list[MonthlyBalanceCategoryPlan] = []
+    for category_id in variable_ids:
+        planned = variable_plan.get(category_id, Decimal("0"))
+        actual_at_close = sum(
+            Decimal(str(item.importe_real))
+            for item in response.gastos_reales_por_categoria
+            if item.categoria_id == category_id
+            or (item.categoria_id is None and category_by_code is not None and category_id == category_by_code.id)
+        )
+        if planned == 0 and actual_at_close == 0:
+            continue
+        variable_lines.append(MonthlyBalanceCategoryPlan(
+            tipo="gasto_variable",
+            categoria_id=category_id,
+            nombre=None,
+            importe_planificado=planned,
+        ))
+
+    snapshot = MonthlyBalancePlan(
+        anio=year,
+        mes=month,
+        ingresos_planificados=Decimal(str(
+            response.ingresos_planificados
+            if response.ingresos_planificados is not None
+            else response.ingresos_persona_a + response.ingresos_persona_b
+        )),
+        ingresos_planificados_josue=Decimal(str(response.ingresos_persona_a)),
+        ingresos_planificados_adi=Decimal(str(response.ingresos_persona_b)),
+        cuenta_personal_josue=Decimal(str(response.cuenta_personal_a)),
+        cuenta_personal_adi=Decimal(str(response.cuenta_personal_b)),
+        categorias=[*fixed_lines, *variable_lines],
+    )
+    db.add(snapshot)
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="El mes ya se ha cerrado") from error
 
     return _build_response(plan, month, year, db)
 

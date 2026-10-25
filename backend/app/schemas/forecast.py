@@ -13,6 +13,7 @@ class ForecastCategoryItem(BaseModel):
 
     id: int | None = None
     categoria: str | None = None
+    categoria_id: int | None = None
     nombre: str
     importe_planificado: float
     importe_real: float
@@ -62,6 +63,7 @@ class ForecastResponse(BaseModel):
     mes: int
     es_ejecucion: bool
     balance_cerrado: bool
+    plan_guardado: bool
 
     # Personal budget allocations; treated as a separate expense in execution.
     cuenta_personal_a: float

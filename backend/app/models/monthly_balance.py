@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import Boolean, ForeignKey, Numeric, String, UniqueConstraint, text
+from sqlalchemy import Boolean, ForeignKey, Index, Numeric, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -44,11 +44,28 @@ class MonthlyBalancePlan(Base):
 class MonthlyBalanceCategoryPlan(Base):
     __tablename__ = "monthly_balance_category_plans"
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "uq_monthly_balance_fixed_line",
+            "balance_plan_id",
+            "categoria_id",
+            "nombre",
+            unique=True,
+            postgresql_where=text("tipo = 'gasto_fijo'"),
+        ),
+        Index(
+            "uq_monthly_balance_variable_categoria",
+            "balance_plan_id",
+            "categoria_id",
+            unique=True,
+            postgresql_where=text("tipo = 'gasto_variable'"),
+        ),
+        Index(
+            "uq_monthly_balance_person_line",
             "balance_plan_id",
             "tipo",
             "nombre",
-            name="uq_monthly_balance_category_tipo_nombre",
+            unique=True,
+            postgresql_where=text("tipo IN ('ingreso', 'asignacion_personal')"),
         ),
     )
 
@@ -57,8 +74,7 @@ class MonthlyBalanceCategoryPlan(Base):
         ForeignKey("monthly_balance_plans.id", ondelete="CASCADE"), nullable=False
     )
     tipo: Mapped[str] = mapped_column(String(30), nullable=False)
-    categoria_nombre: Mapped[str] = mapped_column(String(100), nullable=False)
-    nombre: Mapped[str] = mapped_column(String(200), nullable=False)
+    nombre: Mapped[str | None] = mapped_column(String(200), nullable=True)
     importe_planificado: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     categoria_id: Mapped[int | None] = mapped_column(
         ForeignKey("categories.id", name="fk_monthly_balance_category_plans_categoria_id"),

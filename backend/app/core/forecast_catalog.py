@@ -6,18 +6,17 @@ FIXED_CATEGORY_NAMES: list[str] = [
     "Tarjeta Credito",
     "Remesas",
     "Impuestos",
-    "Colegios",
     "Deportes",
 ]
 
 SUBSCRIPTION_DEFAULT_CONCEPTS: list[str] = [
     "Netflix",
-    "Amazon",
-    "Disney",
-    "HBO",
+    "Amazon Prime",
+    "Disney+",
+    "HBO Max",
     "Spotify",
     "HP Printer",
-    "Office",
+    "Microsoft 365",
 ]
 
 _CATEGORY_ALIASES: dict[str, str] = {
@@ -27,7 +26,6 @@ _CATEGORY_ALIASES: dict[str, str] = {
     "tarjetas de crédito": "Tarjeta Credito",
     "tarjeta de credito": "Tarjeta Credito",
     "tarjeta de crédito": "Tarjeta Credito",
-    "colegio": "Colegios",
 }
 
 

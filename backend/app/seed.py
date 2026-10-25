@@ -33,7 +33,6 @@ CATEGORIES = [
     {"nombre": "Préstamos",              "icono": "🏦", "color": "#dc2626"},
     {"nombre": "Tarjeta Credito",        "icono": "💳", "color": "#dc2626"},
     {"nombre": "Remesas",                "icono": "💸", "color": "#2563eb"},
-    {"nombre": "Colegios",               "icono": "🏫", "color": "#0ea5e9"},
     {"nombre": "Deportes",               "icono": "⚽", "color": "#16a34a"},
     {"nombre": "Otros",                  "icono": "📦", "color": "#9ca3af"},
 ]
